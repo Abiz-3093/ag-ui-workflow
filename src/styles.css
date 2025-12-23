@@ -1,0 +1,367 @@
+:root{
+  --bg:#f5f7fb;
+  --panel:#ffffff;
+  --panel2:#f0f4ff;
+  --border:rgba(0,0,0,.08);
+  --text:#0f172a;
+  --muted:#475569;
+  --accent:#5b75f8;
+  --good:#16a34a;
+  --bad:#e11d48;
+  --shadow: 0 10px 28px rgba(15,23,42,.08);
+  font-family: "Segoe UI", "Helvetica Neue", Arial, ui-sans-serif, system-ui, -apple-system, "Apple Color Emoji","Segoe UI Emoji";
+}
+
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+}
+
+a{color:inherit}
+button,input,textarea{font:inherit;color:inherit}
+
+.app{
+  display:grid;
+  grid-template-columns: 320px 1fr 420px;
+  gap:14px;
+  padding:14px;
+  height:100vh;
+}
+
+.panel{
+  background:linear-gradient(180deg, #fff, #f8fafc);
+  border:1px solid var(--border);
+  border-radius:16px;
+  box-shadow: var(--shadow);
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+  min-height:0;
+}
+.panelHeader{
+  padding:12px 14px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  border-bottom:1px solid var(--border);
+  background:rgba(0,0,0,.02);
+}
+.panelTitle{
+  font-size:14px;
+  letter-spacing:.2px;
+  opacity:.98;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.badge{
+  font-size:12px;
+  padding:2px 8px;
+  border-radius:999px;
+  background:rgba(91,117,248,.12);
+  border:1px solid rgba(91,117,248,.28);
+  color:var(--text);
+}
+.panelBody{
+  padding:12px 14px;
+  overflow:auto;
+  min-height:0;
+}
+.row{display:flex;gap:10px;align-items:center}
+.col{display:flex;flex-direction:column;gap:10px}
+
+.hr{height:1px;background:var(--border);margin:12px 0}
+
+.btn{
+  border:1px solid rgba(0,0,0,.08);
+  background:#fff;
+  border-radius:12px;
+  padding:8px 10px;
+  cursor:pointer;
+  transition:.12s ease;
+}
+.btn:hover{transform:translateY(-1px);background:rgba(91,117,248,.08)}
+.btnPrimary{
+  border-color: rgba(91,117,248,.35);
+  background: rgba(91,117,248,.14);
+}
+.btnPrimary:hover{background: rgba(91,117,248,.2)}
+.btnDanger{
+  border-color: rgba(225,29,72,.25);
+  background: rgba(225,29,72,.1);
+}
+.btnSmall{padding:6px 8px;border-radius:10px;font-size:13px}
+.muted{color:var(--muted)}
+.small{font-size:12px}
+.kbd{
+  padding:2px 6px;border-radius:8px;border:1px solid var(--border);
+  background:rgba(0,0,0,.04);font-size:12px;color:var(--muted)
+}
+
+.input, .textarea, .select{
+  width:100%;
+  border:1px solid rgba(0,0,0,.08);
+  background:#fff;
+  border-radius:12px;
+  padding:10px 10px;
+  outline:none;
+}
+.textarea{min-height:110px;resize:vertical}
+
+.pill{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:6px 10px;border-radius:999px;
+  border:1px solid var(--border);
+  background:rgba(0,0,0,.04);
+  font-size:12px;color:var(--muted);
+}
+
+.tabs{display:flex;gap:8px}
+.tab{
+  border:1px solid rgba(255,255,255,.14);
+  background:rgba(0,0,0,.18);
+  border-radius:999px;
+  padding:6px 10px;
+  cursor:pointer;
+  font-size:13px;
+}
+.tabActive{
+  border-color: rgba(124,92,255,.35);
+  background: rgba(124,92,255,.18);
+}
+
+.chat{
+  display:flex;flex-direction:column;gap:10px;min-height:521px;
+}
+.chatLog{
+  flex:1;overflow:auto;padding-right:6px;
+  display:flex;flex-direction:column;gap:10px;min-height:0;
+}
+.bubble{
+  max-width: 92%;
+  padding:10px 12px;
+  border-radius:16px;
+  border:1px solid var(--border);
+  background:rgba(0,0,0,.22);
+  white-space:pre-wrap;
+  line-height:1.35;
+}
+.bubbleUser{
+  align-self:flex-end;
+  background:rgba(91,117,248,.14);
+  border-color: rgba(91,117,248,.28);
+}
+.bubbleAssistant{
+  align-self:flex-start;
+}
+.chatComposer{
+  display:flex;gap:10px;align-items:flex-end;
+}
+.chatComposer textarea{flex:1;min-height:42px;max-height:140px}
+
+.statusDot{
+  width:8px;height:8px;border-radius:50%;
+  background: rgba(100,116,139,.35);
+  box-shadow:0 0 0 4px rgba(100,116,139,.12);
+}
+.statusDot.on{background: var(--good); box-shadow:0 0 0 4px rgba(22,163,74,.12)}
+.statusDot.err{background: var(--bad); box-shadow:0 0 0 4px rgba(225,29,72,.12)}
+
+
+.selectedNode{outline:2px solid rgba(91,117,248,.65); outline-offset:2px; border-radius:10px}
+
+.aiAgentNode{
+  position:relative;
+  padding:18px 20px 8px;
+  min-width:220px;
+  border-radius:18px;
+  border:1px solid var(--border);
+  background:linear-gradient(180deg, #ffffff, #f8fafc);
+  box-shadow:var(--shadow);
+}
+.aiAgentNodeSelected{
+  outline:2px solid rgba(91,117,248,.6);
+  outline-offset:3px;
+}
+.aiAgentBody{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  font-weight:650;
+  font-size:15px;
+  color:var(--text);
+}
+.aiAgentIcon{
+  width:34px;height:34px;
+  border-radius:12px;
+  display:grid;place-items:center;
+  background:rgba(91,117,248,.14);
+  border:1px solid rgba(91,117,248,.3);
+  font-size:18px;
+}
+.aiAgentHandle{
+  width:12px;height:12px;
+  background:#cbd5e1;
+  border:2px solid #fff;
+}
+.aiAgentPorts{
+  display:flex;
+  justify-content:space-evenly;
+  gap:8px;
+  margin-top:12px;
+}
+.aiAgentPort{
+  position:relative;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:4px;
+  font-size:12px;
+  color:var(--muted);
+  padding-bottom:3px;
+}
+.aiAgentPortHandle{
+  width:12px;height:12px;
+  background:#5b75f8;
+  border:2px solid #fff;
+  border-radius:4px;
+  position:absolute;
+  bottom:-10px;
+  left:50%;
+  transform:translateX(-50%);
+}
+.aiAgentPortLabel{white-space:nowrap}
+.aiAgentReq{color:#fb7185;margin-left:3px}
+.aiAgentPortAdd{
+  width:22px;height:22px;
+  border-radius:6px;
+  border:1px dashed rgba(91,117,248,.5);
+  display:grid;place-items:center;
+  color:rgba(91,117,248,.9);
+  background:rgba(91,117,248,.1);
+  cursor:pointer;
+}
+
+.nodeCard{
+  position:relative;
+  padding:14px 16px;
+  min-width:180px;
+  border-radius:14px;
+  border:1px solid var(--border);
+  background:linear-gradient(180deg, #ffffff, #f8fafc);
+  box-shadow:var(--shadow);
+}
+.nodeCardSelected{
+  outline:2px solid rgba(91,117,248,.5);
+  outline-offset:3px;
+}
+.nodeCardHeader{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.nodeCardTitle{
+  font-weight:650;
+}
+.nodeCardType{
+  font-size:12px;
+  color:var(--muted);
+  padding:2px 8px;
+  border-radius:10px;
+  border:1px solid var(--border);
+  background:rgba(0,0,0,.04);
+}
+.nodeDeleteBtn{
+  margin-left:auto;
+  border:1px solid rgba(0,0,0,.12);
+  background:rgba(225,29,72,.08);
+  color:#b91c1c;
+  border-radius:8px;
+  cursor:pointer;
+  padding:2px 8px;
+  line-height:1.1;
+}
+.nodeDeleteBtn:hover{
+  background:rgba(225,29,72,.16);
+}
+
+/* React Flow base tweaks */
+.react-flow__pane{
+  background:radial-gradient(#e2e8f0 1px, transparent 1px) 0 0 / 22px 22px, #f8fafc;
+}
+.react-flow__node-default{
+  border:none !important;
+  box-shadow:none !important;
+  background:transparent !important;
+  padding:0;
+}
+.react-flow__node-default.selected{
+  box-shadow:none;
+}
+
+.jsonModal{
+  position:fixed;
+  inset:0;
+  background:rgba(15,23,42,.45);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+  z-index:30;
+}
+.jsonModalCard{
+  background:#fff;
+  border-radius:14px;
+  border:1px solid var(--border);
+  box-shadow:var(--shadow);
+  max-width:720px;
+  width:100%;
+  max-height:80vh;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  padding:14px;
+}
+.jsonViewer{
+  margin:0;
+  padding:12px;
+  background:#0f172a;
+  color:#e2e8f0;
+  border-radius:12px;
+  border:1px solid rgba(0,0,0,.12);
+  overflow:auto;
+  max-height:60vh;
+  font-size:12px;
+}
+
+.collapseBtn.edgeToggle{
+  position:absolute;
+  top:50%;
+  right:2px;
+  transform:translate(50%,-50%);
+  width:26px;
+  height:26px;
+  border-radius:50%;
+  border:1px solid rgba(0,0,0,.12);
+  background:#fff;
+  box-shadow:var(--shadow);
+  cursor:pointer;
+}
+.collapseBtn.edgeToggle:hover{background:rgba(91,117,248,.1)}
+
+.collapseBtn.edgeToggleRight{
+  position:absolute;
+  top:50%;
+  transform:translate(-50%,-50%);
+  width:26px;
+  height:26px;
+  border-radius:50%;
+  border:1px solid rgba(0,0,0,.12);
+  background:#fff;
+  box-shadow:var(--shadow);
+  cursor:pointer;
+}
+.collapseBtn.edgeToggleRight:hover{background:rgba(91,117,248,.1)}
