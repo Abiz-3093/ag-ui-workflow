@@ -140,6 +140,10 @@ export default function NodeInspector(props: {
             <ToolEditor node={node} onUpdateNode={updateOtherNode} />
           ) : null}
 
+          {type === "mcp-tool" ? (
+            <McpToolEditor node={node} onUpdate={props.onUpdate} />
+          ) : null}
+
         </div>
       </div>
     </div>
@@ -295,6 +299,49 @@ function ToolEditor(props: { node: Node; onUpdateNode: (id: string, patch: Parti
           Add
         </button>
       </div>
+    </div>
+  );
+}
+
+function McpToolEditor(props: { node: Node; onUpdate: (patch: Partial<Node>) => void }) {
+  const data = (props.node.data as any) ?? {};
+  const config = data.config ?? {};
+  const server = config.server ?? "";
+  const tool = config.tool ?? "";
+  const params = config.params ?? "{}";
+
+  const update = (patch: Record<string, unknown>) => {
+    props.onUpdate({ data: { ...data, config: { ...config, ...patch } } });
+  };
+
+  return (
+    <div className="col" style={{ padding: 10, borderRadius: 12, border: "1px solid var(--border)", background: "rgba(255,255,255,.04)" }}>
+      <div style={{ fontWeight: 650 }}>MCP Server Tool</div>
+
+      <label className="small muted">Server</label>
+      <input
+        className="input"
+        placeholder="e.g. local-mcp-server"
+        value={server}
+        onChange={(e) => update({ server: e.target.value })}
+      />
+
+      <label className="small muted">Tool</label>
+      <input
+        className="input"
+        placeholder="e.g. search-docs"
+        value={tool}
+        onChange={(e) => update({ tool: e.target.value })}
+      />
+
+      <label className="small muted">Params (JSON)</label>
+      <textarea
+        className="input"
+        style={{ minHeight: 80 }}
+        placeholder='{"query": "foo"}'
+        value={params}
+        onChange={(e) => update({ params: e.target.value })}
+      />
     </div>
   );
 }

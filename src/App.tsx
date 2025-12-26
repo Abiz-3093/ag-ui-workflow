@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
+﻿import React, { useCallback, useMemo, useRef, useState } from "react";
 import type { Node } from "reactflow";
 import WorkflowCanvas, { DEFAULT_WORKFLOW, type WorkflowState } from "./components/WorkflowCanvas";
 import NodePalette, { type NodeAddOptions, type PaletteNodeType } from "./components/NodePalette";
@@ -23,20 +23,108 @@ const DEFAULT_AGENT_CONFIG = {
   ],
 };
 
-function defaultConfigForType(type: string) {
-  if (type === "ai-agent") {
-    return { ...DEFAULT_AGENT_CONFIG, tools: [...DEFAULT_AGENT_CONFIG.tools] };
+const MOCK_PROJECTS: { id: string; name: string; workflow: WorkflowState; savedAt: number }[] = [
+  {
+    id: "proj-demo-1",
+    name: "Sample Agent Flow",
+    workflow: DEFAULT_WORKFLOW,
+    savedAt: Date.now() - 1000 * 60 * 60 * 4,
+  },
+  {
+    id: "proj-demo-2",
+    name: "Webhook to Transform",
+    workflow: {
+      nodes: [
+        {
+          id: "t1",
+          type: "default",
+          position: { x: 120, y: 140 },
+          data: { label: "Webhook Trigger", type: "webhook-trigger", config: { path: "/demo" } },
+        },
+        {
+          id: "a1",
+          type: "aiAgent",
+          position: { x: 420, y: 140 },
+          data: {
+            label: "AI Agent",
+            type: "ai-agent",
+            config: {
+              model: "gpt-4o",
+              memory: "conversation-buffer",
+              endpoint: "",
+              apiKey: "",
+              guardrail: "",
+              tools: [{ name: "http-request", description: "Call downstream APIs" }],
+            },
+          },
+        },
+        {
+          id: "x1",
+          type: "default",
+          position: { x: 720, y: 140 },
+          data: { label: "Transform", type: "transform", config: { mapping: {} } },
+        },
+      ],
+      edges: [
+        { id: "e-t1-a1", source: "t1", target: "a1" },
+        { id: "e-a1-x1", source: "a1", target: "x1" },
+      ],
+    },
+    savedAt: Date.now() - 1000 * 60 * 60 * 24,
+  },
+];
+
+function defaultConfigForType(t: PaletteNodeType) {
+  const defaults = (t.defaults?.config ?? {}) as Record<string, unknown>;
+  if (t.type === "ai-agent") {
+    return { ...DEFAULT_AGENT_CONFIG, tools: DEFAULT_AGENT_CONFIG.tools.map((tool) => ({ ...tool })) };
   }
-  return {};
+  if (t.type === "model") {
+    return {
+      model: (defaults as any).model ?? "gpt-4o-mini",
+      guardrail: (defaults as any).guardrail ?? "",
+      endpoint: (defaults as any).endpoint ?? "",
+      apiKey: (defaults as any).apiKey ?? "",
+    };
+  }
+  if (t.type === "memory") {
+    return { memory: (defaults as any).memory ?? "conversation-buffer" };
+  }
+  if (t.type === "tool") {
+    const tools = Array.isArray((defaults as any).tools)
+      ? (defaults as any).tools.map((tool: any) => ({ ...tool }))
+      : [];
+    return { tools };
+  }
+  if (t.type === "mcp-tool") {
+    return {
+      server: (defaults as any).server ?? "",
+      tool: (defaults as any).tool ?? "",
+      params: (defaults as any).params ?? "{}",
+    };
+  }
+  return { ...defaults };
 }
 
 export default function App() {
   const [wf, setWf] = useState<WorkflowState>(DEFAULT_WORKFLOW);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const [showPalette, setShowPalette] = useState(true);
+  const [showPalette, setShowPalette] = useState(false);
   const [showJson, setShowJson] = useState(false);
   const [showInspector, setShowInspector] = useState(false);
   const [showChatPanel, setShowChatPanel] = useState(true);
+  const [paletteSearch, setPaletteSearch] = useState("");
+  const [pendingAttach, setPendingAttach] = useState<{
+    connectFrom: { nodeId: string; handleId: string };
+    kind: "model" | "memory" | "tool";
+  } | null>(null);
+  const [view, setView] = useState<"workflow" | "projects">("workflow");
+  const [projects, setProjects] = useState<
+    { id: string; name: string; workflow: WorkflowState; savedAt: number }[]
+  >([]);
+  const [newProjectName, setNewProjectName] = useState("");
+  const [showImport, setShowImport] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
 
   const selectedNode = useMemo<Node | null>(() => {
     if (!selectedNodeId) return null;
@@ -84,14 +172,86 @@ export default function App() {
 
   const chatFocusRef = useRef<HTMLTextAreaElement>(null);
 
+  React.useEffect(() => {
+    try {
+      const raw = localStorage.getItem("savedWorkflows");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          setProjects(parsed);
+        }
+      } else {
+        setProjects(MOCK_PROJECTS);
+      }
+    } catch (err) {
+      console.warn("Failed to load saved workflows", err);
+      setProjects(MOCK_PROJECTS);
+    }
+  }, []);
+
+  const persistProjects = useCallback((next: typeof projects) => {
+    setProjects(next);
+    try {
+      localStorage.setItem("savedWorkflows", JSON.stringify(next));
+    } catch (err) {
+      console.warn("Failed to persist workflows", err);
+    }
+  }, []);
+
+  const saveCurrentProject = useCallback(() => {
+    const name = newProjectName.trim() || `Workflow ${projects.length + 1}`;
+    const entry = { id: nextId("proj"), name, workflow: wf, savedAt: Date.now() };
+    const next = [entry, ...projects];
+    persistProjects(next);
+    setNewProjectName("");
+    setView("projects");
+  }, [newProjectName, projects, wf, persistProjects]);
+
+  const loadProject = useCallback(
+    (id: string) => {
+      const match = projects.find((p) => p.id === id);
+      if (!match) return;
+      setWf(match.workflow);
+      setSelectedNodeId(null);
+      setView("workflow");
+    },
+    [projects]
+  );
+
+  const handleImportFile = useCallback(
+    (file: File | null) => {
+      if (!file) return;
+      setImportError(null);
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const parsed = JSON.parse(String(reader.result ?? ""));
+          if (!parsed || typeof parsed !== "object" || !Array.isArray((parsed as any).nodes)) {
+            throw new Error("Invalid workflow file (missing nodes)");
+          }
+          setWf(parsed as WorkflowState);
+          setSelectedNodeId(null);
+          setView("workflow");
+          setShowImport(false);
+        } catch (err: any) {
+          setImportError(err?.message ?? "Failed to import workflow");
+        }
+      };
+      reader.onerror = () => setImportError("Could not read file");
+      reader.readAsText(file);
+    },
+    []
+  );
+
   const addNode = useCallback(
     (t: PaletteNodeType, options?: NodeAddOptions) => {
+      setView("workflow");
       const id = nextId();
-      const nodeType = t.type === "ai-agent" ? "aiAgent" : "default";
-      const config = defaultConfigForType(t.type);
+      const nodeType = t.type === "ai-agent" ? "aiAgent" : t.type === "tool" ? "aiTool" : "default";
+      const config = defaultConfigForType(t);
+      const connectFrom = options?.connectFrom ?? pendingAttach?.connectFrom ?? null;
       setWf((prev) => {
-        const sourceNode =
-          options?.connectFrom?.nodeId ? prev.nodes.find((n) => n.id === options.connectFrom?.nodeId) : null;
+        const sourceNode = connectFrom?.nodeId ? prev.nodes.find((n) => n.id === connectFrom.nodeId) : null;
         const x =
           options?.position?.x ??
           (sourceNode ? sourceNode.position.x + 180 : 120 + prev.nodes.length * 40);
@@ -112,11 +272,11 @@ export default function App() {
         ];
 
         const newEdge =
-          options?.connectFrom?.nodeId && options?.connectFrom?.handleId
+          connectFrom?.nodeId && connectFrom?.handleId
             ? {
                 id: nextId("e"),
-                source: options.connectFrom.nodeId,
-                sourceHandle: options.connectFrom.handleId,
+                source: connectFrom.nodeId,
+                sourceHandle: connectFrom.handleId,
                 target: id,
               }
             : null;
@@ -128,13 +288,18 @@ export default function App() {
         };
       });
       setSelectedNodeId(id);
+      if (pendingAttach) {
+        setPendingAttach(null);
+      }
     },
-    []
+    [pendingAttach]
   );
 
   const reset = useCallback(() => {
     setWf(DEFAULT_WORKFLOW);
     setSelectedNodeId(null);
+    setPendingAttach(null);
+    setPaletteSearch("");
   }, []);
 
   const deleteNode = useCallback((id: string) => {
@@ -215,17 +380,88 @@ export default function App() {
     >
       <NodePalette
         collapsed={!showPalette}
-        onToggle={() => setShowPalette((v) => !v)}
+        onToggle={() => {
+          setView("workflow");
+          setShowPalette((v) => !v);
+        }}
         onAdd={(t) => addNode(t)}
         onClear={reset}
+        searchTerm={paletteSearch}
+        onSearchChange={setPaletteSearch}
+        pendingKind={pendingAttach?.kind}
+        onOpenProjects={() => {
+          setView("projects");
+          setShowPalette(false);
+        }}
+        onOpenImport={() => {
+          setShowImport(true);
+          setShowPalette(false);
+          setView("workflow");
+        }}
       />
 
-      <WorkflowCanvas
-        state={wf}
-        onChange={setWf}
+      {view === "projects" ? (
+        <div className="panel" style={{ gridColumn: "span 2", margin: "12px 8px" }}>
+          <div className="panelHeader">
+            <div className="panelTitle">Projects</div>
+            <div className="row" style={{ gap: 8 }}>
+              <button className="btn btnSmall" onClick={() => setView("workflow")}>
+                Back to workflow
+              </button>
+              <button className="btn btnPrimary btnSmall" onClick={saveCurrentProject}>
+                Save current
+              </button>
+            </div>
+          </div>
+          <div className="panelBody" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div className="row" style={{ gap: 8, alignItems: "center" }}>
+              <input
+                className="input"
+                placeholder="Name this workflow"
+                value={newProjectName}
+                onChange={(e) => setNewProjectName(e.target.value)}
+              />
+              <span className="small muted">Saved locally (mock data)</span>
+            </div>
+            <div className="col" style={{ gap: 8, maxHeight: 480, overflow: "auto" }}>
+              {projects.length === 0 ? (
+                <div className="small muted">No saved projects yet.</div>
+              ) : (
+                projects.map((p) => (
+                  <button
+                    key={p.id}
+                    className="btn"
+                    onClick={() => loadProject(p.id)}
+                    style={{ textAlign: "left" }}
+                  >
+                    <div className="row" style={{ justifyContent: "space-between" }}>
+                      <div>
+                        <div style={{ fontWeight: 650 }}>{p.name}</div>
+                        <div className="small muted">
+                          Saved {new Date(p.savedAt).toLocaleString()}
+                        </div>
+                      </div>
+                      <span className="kbd">Open</span>
+                    </div>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
+          <WorkflowCanvas
+            state={wf}
+            onChange={setWf}
             onSelectNode={handleSelectNode}
             onRemoveNode={deleteNode}
             onAddNode={addNode}
+            onStartAttach={({ kind, sourceId, handleId }) => {
+              setShowPalette(true);
+              setPaletteSearch(kind);
+              setPendingAttach({ kind, connectFrom: { nodeId: sourceId, handleId } });
+            }}
             onViewJson={() => setShowJson(true)}
             onDeploy={() => {
               try {
@@ -240,36 +476,38 @@ export default function App() {
                 console.error("Deploy download failed", err);
               }
             }}
-      />
-
-      <div className="panel" style={{ padding: 0, overflow: "visible" }}>
-        <div className="panelHeader" style={{ display: showChatPanel ? undefined : "none" }}>
-          <div className="panelTitle">Chat arena</div>
-          <span className="small muted">Chat reads model/endpoint/key from the AI Agent node.</span>
-        </div>
-
-        <div
-          className="panelBody"
-          style={{ display: showChatPanel ? "flex" : "none", flexDirection: "column", gap: 12, minHeight: 0 }}
-        >
-          <ChatPanel
-            agent={agent}
-            status={status as any}
-            statusText={statusText}
-            onToolCall={handleToolCall as any}
-            inputPayload={chatInputPayload}
-            focusHotkeyRef={chatFocusRef}
           />
-        </div>
 
-        <button
-          className="collapseBtn edgeToggleRight"
-          onClick={() => setShowChatPanel((v) => !v)}
-          title={showChatPanel ? "Collapse panel" : "Open panel"}
-        >
-          {showChatPanel ? ">" : "<"}
-        </button>
-      </div>
+          <div className="panel" style={{ padding: 0, overflow: "visible" }}>
+            <div className="panelHeader" style={{ display: showChatPanel ? undefined : "none" }}>
+              <div className="panelTitle">Chat arena</div>
+              <span className="small muted">Chat reads model/endpoint/key from the AI Agent node.</span>
+            </div>
+
+            <div
+              className="panelBody"
+              style={{ display: showChatPanel ? "flex" : "none", flexDirection: "column", gap: 12, minHeight: 0 }}
+            >
+              <ChatPanel
+                agent={agent}
+                status={status as any}
+                statusText={statusText}
+                onToolCall={handleToolCall as any}
+                inputPayload={chatInputPayload}
+                focusHotkeyRef={chatFocusRef}
+              />
+            </div>
+
+            <button
+              className="collapseBtn edgeToggleRight"
+              onClick={() => setShowChatPanel((v) => !v)}
+              title={showChatPanel ? "Collapse panel" : "Open panel"}
+            >
+              {showChatPanel ? ">" : "<"}
+            </button>
+          </div>
+        </>
+      )}
 
       {showInspector && selectedNode ? (
         <div className="jsonModal" onClick={closeInspector}>
@@ -308,6 +546,32 @@ export default function App() {
               </button>
             </div>
             <pre className="jsonViewer">{JSON.stringify(wf, null, 2)}</pre>
+          </div>
+        </div>
+      ) : null}
+
+      {showImport ? (
+        <div className="jsonModal" onClick={() => setShowImport(false)}>
+          <div
+            className="jsonModalCard"
+            style={{ maxWidth: 480 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ fontWeight: 650 }}>Import workflow</div>
+              <button className="btn btnSmall" onClick={() => setShowImport(false)}>
+                Close
+              </button>
+            </div>
+            <div className="col" style={{ gap: 8 }}>
+              <input
+                type="file"
+                accept="application/json"
+                onChange={(e) => handleImportFile(e.target.files?.[0] ?? null)}
+              />
+              <div className="small muted">Upload a workflow JSON file exported from this app.</div>
+              {importError ? <div className="small" style={{ color: "var(--danger)" }}>{importError}</div> : null}
+            </div>
           </div>
         </div>
       ) : null}

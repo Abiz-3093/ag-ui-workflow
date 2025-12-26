@@ -68,6 +68,7 @@ export default function WorkflowCanvas(props: {
   onSelectNode: (node: Node | null, openInspector?: boolean) => void;
   onRemoveNode?: (id: string) => void;
   onAddNode?: (t: PaletteNodeType, options?: NodeAddOptions) => void;
+  onStartAttach?: (args: { kind: "model" | "memory" | "tool"; sourceId: string; handleId: string }) => void;
   onViewJson?: () => void;
   onDeploy?: () => void;
 }) {
@@ -113,6 +114,15 @@ export default function WorkflowCanvas(props: {
           {...p}
           onRemove={handleRemove}
           onAddNode={handleAdd}
+          onStartAttach={props.onStartAttach}
+        />
+      ),
+      aiTool: (p: NodeProps) => (
+        <AiToolNode
+          {...p}
+          onRemove={handleRemove}
+          onAddNode={handleAdd}
+          onStartAttach={props.onStartAttach}
         />
       ),
       default: (p: NodeProps) => (
@@ -175,11 +185,16 @@ type NodeWithActions = NodeProps & {
   selected?: boolean;
   onRemove?: (id: string) => void;
   onAddNode?: (t: PaletteNodeType, options?: NodeAddOptions) => void;
+  onStartAttach?: (args: { kind: "model" | "memory" | "tool"; sourceId: string; handleId: string }) => void;
 };
 
 function AiAgentNode(props: NodeWithActions) {
   const label = (props.data as any)?.label ?? "AI Agent";
   const addByKind = (kind: "model" | "memory" | "tool") => {
+    if (props.onStartAttach) {
+      props.onStartAttach({ kind, sourceId: props.id, handleId: kind });
+      return;
+    }
     props.onAddNode?.(
       {
         type: kind,
@@ -207,6 +222,54 @@ function AiAgentNode(props: NodeWithActions) {
             title="Remove node"
           >
             ×
+          </button>
+        ) : null}
+      </div>
+      <Handle id="out" type="source" position={Position.Right} className="aiAgentHandle" />
+
+      <div className="aiAgentPorts">
+        <Port label="Chat Model" handleId="model" required onAdd={() => addByKind("model")} />
+        <Port label="Memory" handleId="memory" onAdd={() => addByKind("memory")} />
+        <Port label="Tool" handleId="tool" onAdd={() => addByKind("tool")} />
+      </div>
+    </div>
+  );
+}
+
+function AiToolNode(props: NodeWithActions) {
+  const label = (props.data as any)?.label ?? "AI Agent Tool";
+  const addByKind = (kind: "model" | "memory" | "tool") => {
+    if (props.onStartAttach) {
+      props.onStartAttach({ kind, sourceId: props.id, handleId: kind });
+      return;
+    }
+    props.onAddNode?.(
+      {
+        type: kind,
+        label: kind === "model" ? "Chat Model" : kind === "memory" ? "Memory" : "Tool",
+        description: `Auto-added ${kind}`,
+      },
+      {
+        connectFrom: { nodeId: props.id, handleId: kind },
+      }
+    );
+  };
+  return (
+    <div className={`aiAgentNode ${props.selected ? "aiAgentNodeSelected" : ""}`}>
+      <Handle id="in" type="target" position={Position.Left} className="aiAgentHandle" />
+      <div className="aiAgentBody">
+        <div className="aiAgentIcon">⚙</div>
+        <div className="aiAgentTitle">{label}</div>
+        {props.onRemove ? (
+          <button
+            className="nodeDeleteBtn"
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onRemove?.(props.id);
+            }}
+            title="Remove node"
+          >
+            A-
           </button>
         ) : null}
       </div>
@@ -251,10 +314,12 @@ function Port(props: { label: string; handleId: string; required?: boolean; onAd
 function CardNode(props: NodeWithActions) {
   const data = (props.data as any) ?? {};
   const label = data.label ?? props.id;
+  const type = data.type ?? props.type;
+  const isTrigger = type === "trigger" || type === "webhook-trigger" || type === "cron";
 
   return (
     <div className={`nodeCard ${props.selected ? "nodeCardSelected" : ""}`}>
-      <Handle id="in" type="target" position={Position.Top} className="aiAgentHandle" />
+      {isTrigger ? null : <Handle id="in" type="target" position={Position.Top} className="aiAgentHandle" />}
       <div className="nodeCardHeader">
         <div className="nodeCardTitle">{label}</div>
         {props.onRemove ? (
