@@ -1,5 +1,6 @@
 import React from "react";
 import { NODE_BASE, type NodeTemplate } from "../nodes/nodeBase";
+import { iconForType } from "../iconMap";
 
 export type PaletteNodeType = NodeTemplate;
 
@@ -319,9 +320,12 @@ export default function NodePalette(props: {
                       style={{ textAlign: "left" }}
                     >
                       <div className="row" style={{ justifyContent: "space-between" }}>
-                        <div>
-                          <div style={{ fontWeight: 650 }}>{t.label}</div>
-                          <div className="small muted">{t.description}</div>
+                        <div className="row" style={{ alignItems: "center", gap: 10 }}>
+                          <span aria-hidden="true">{iconForType(t.type)}</span>
+                          <div>
+                            <div style={{ fontWeight: 650 }}>{t.label}</div>
+                            <div className="small muted">{t.description}</div>
+                          </div>
                         </div>
                         <span className="kbd">+</span>
                       </div>

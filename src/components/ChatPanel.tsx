@@ -8,13 +8,16 @@ export default function ChatPanel(props: {
   statusText: string;
   onToolCall: AgentRunHandlers["onToolCallEvent"];
   inputPayload?: Record<string, unknown>;
-  focusHotkeyRef?: React.RefObject<HTMLTextAreaElement>;
+  focusHotkeyRef?: React.RefObject<HTMLInputElement>;
+  headerExtras?: React.ReactNode;
+  unstyled?: boolean;
+  onLog?: (line: string) => void;
 }) {
   const [draft, setDraft] = useState("");
   const [, force] = useState(0);
 
   const logRef = useRef<HTMLDivElement>(null);
-  const composerRef = props.focusHotkeyRef ?? useRef<HTMLTextAreaElement>(null);
+  const composerRef = props.focusHotkeyRef ?? useRef<HTMLInputElement>(null);
 
   const messages = props.agent.messages;
 
@@ -41,6 +44,7 @@ export default function ChatPanel(props: {
 
     const userMsg: ChatMessage = { id: uuid(), role: "user", content: text };
     messages.push(userMsg);
+    props.onLog?.(`User: ${text}`);
     setDraft("");
     force((x) => x + 1);
 
@@ -53,22 +57,24 @@ export default function ChatPanel(props: {
 
     try {
       await props.agent.runAgent(props.inputPayload ?? {}, handlers);
+      props.onLog?.("Agent run completed.");
     } catch (err) {
       const msg: ChatMessage = {
         id: uuid(),
         role: "assistant",
-        content: `❌ Agent error: ${String((err as Error)?.message ?? err)}`,
+        content: `Agent error: ${String((err as Error)?.message ?? err)}`,
       };
       messages.push(msg);
+      props.onLog?.(`Agent error: ${String((err as Error)?.message ?? err)}`);
       force((x) => x + 1);
     }
   }
 
-  return (
-    <div className="panel" style={{ flex: 1, minHeight: 0 }}>
+  const content = (
+    <>
       <div className="panelHeader">
         <div className="panelTitle">
-          💬 Chat
+          Chat
           <span
             className={
               "statusDot " +
@@ -77,7 +83,10 @@ export default function ChatPanel(props: {
           />
           <span className="small muted">{props.statusText}</span>
         </div>
-        <span className="badge">AG-UI-ish</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {props.headerExtras}
+          <span className="badge">AG-UI-ish</span>
+        </div>
       </div>
 
       <div className="panelBody chat">
@@ -99,14 +108,14 @@ export default function ChatPanel(props: {
         </div>
 
         <div className="chatComposer">
-          <textarea
+          <input
             ref={composerRef}
-            className="textarea"
-            placeholder="Message the agent… (Ctrl/⌘+K to focus)"
+            className="input"
+            placeholder="Message the agent (Ctrl/Cmd+K to focus)"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
+              if (e.key === "Enter") {
                 e.preventDefault();
                 void send();
               }
@@ -117,10 +126,19 @@ export default function ChatPanel(props: {
           </button>
         </div>
         <div className="small muted">
-          Press <span className="kbd">Enter</span> to send •{" "}
-          <span className="kbd">Shift</span>+<span className="kbd">Enter</span> for newline
+          Press <span className="kbd">Enter</span> to send.
         </div>
       </div>
+    </>
+  );
+
+  if (props.unstyled) {
+    return <div className="chatSection">{content}</div>;
+  }
+
+  return (
+    <div className="panel" style={{ flex: 1, minHeight: 0 }}>
+      {content}
     </div>
   );
 }

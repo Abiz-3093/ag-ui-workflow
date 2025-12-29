@@ -15,6 +15,7 @@ import ReactFlow, {
 } from "reactflow";
 import "reactflow/dist/style.css";
 import type { NodeAddOptions, PaletteNodeType } from "./NodePalette";
+import { iconForType } from "../iconMap";
 
 export type WorkflowState = {
   nodes: Node[];
@@ -190,6 +191,7 @@ type NodeWithActions = NodeProps & {
 
 function AiAgentNode(props: NodeWithActions) {
   const label = (props.data as any)?.label ?? "AI Agent";
+  const icon = iconForType((props.data as any)?.type ?? props.type);
   const addByKind = (kind: "model" | "memory" | "tool") => {
     if (props.onStartAttach) {
       props.onStartAttach({ kind, sourceId: props.id, handleId: kind });
@@ -210,7 +212,7 @@ function AiAgentNode(props: NodeWithActions) {
     <div className={`aiAgentNode ${props.selected ? "aiAgentNodeSelected" : ""}`}>
       <Handle id="in" type="target" position={Position.Left} className="aiAgentHandle" />
       <div className="aiAgentBody">
-        <div className="aiAgentIcon">🤖</div>
+        <div className="aiAgentIcon" aria-hidden="true">{iconForType((props.data as any)?.type ?? props.type)}</div>
         <div className="aiAgentTitle">{label}</div>
         {props.onRemove ? (
           <button
@@ -238,6 +240,7 @@ function AiAgentNode(props: NodeWithActions) {
 
 function AiToolNode(props: NodeWithActions) {
   const label = (props.data as any)?.label ?? "AI Agent Tool";
+  const icon = iconForType((props.data as any)?.type ?? props.type);
   const addByKind = (kind: "model" | "memory" | "tool") => {
     if (props.onStartAttach) {
       props.onStartAttach({ kind, sourceId: props.id, handleId: kind });
@@ -258,7 +261,7 @@ function AiToolNode(props: NodeWithActions) {
     <div className={`aiAgentNode ${props.selected ? "aiAgentNodeSelected" : ""}`}>
       <Handle id="in" type="target" position={Position.Left} className="aiAgentHandle" />
       <div className="aiAgentBody">
-        <div className="aiAgentIcon">⚙</div>
+        <div className="aiAgentIcon" aria-hidden="true">{iconForType((props.data as any)?.type ?? props.type)}</div>
         <div className="aiAgentTitle">{label}</div>
         {props.onRemove ? (
           <button
@@ -316,12 +319,16 @@ function CardNode(props: NodeWithActions) {
   const label = data.label ?? props.id;
   const type = data.type ?? props.type;
   const isTrigger = type === "trigger" || type === "webhook-trigger" || type === "cron";
+  const icon = iconForType(type);
 
   return (
     <div className={`nodeCard ${props.selected ? "nodeCardSelected" : ""}`}>
       {isTrigger ? null : <Handle id="in" type="target" position={Position.Top} className="aiAgentHandle" />}
       <div className="nodeCardHeader">
-        <div className="nodeCardTitle">{label}</div>
+        <div className="row" style={{ alignItems: "center", gap: 8 }}>
+          <span aria-hidden="true">{icon}</span>
+          <div className="nodeCardTitle">{label}</div>
+        </div>
         {props.onRemove ? (
           <button
             className="nodeDeleteBtn"
@@ -339,3 +346,4 @@ function CardNode(props: NodeWithActions) {
     </div>
   );
 }
+

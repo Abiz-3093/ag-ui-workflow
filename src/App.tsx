@@ -112,7 +112,8 @@ export default function App() {
   const [showPalette, setShowPalette] = useState(false);
   const [showJson, setShowJson] = useState(false);
   const [showInspector, setShowInspector] = useState(false);
-  const [showChatPanel, setShowChatPanel] = useState(true);
+  const [showChatPanel, setShowChatPanel] = useState(false);
+  const [chatExpanded, setChatExpanded] = useState(false);
   const [paletteSearch, setPaletteSearch] = useState("");
   const [pendingAttach, setPendingAttach] = useState<{
     connectFrom: { nodeId: string; handleId: string };
@@ -125,6 +126,7 @@ export default function App() {
   const [newProjectName, setNewProjectName] = useState("");
   const [showImport, setShowImport] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
+  const [logs, setLogs] = useState<string[]>([]);
 
   const selectedNode = useMemo<Node | null>(() => {
     if (!selectedNodeId) return null;
@@ -170,7 +172,7 @@ export default function App() {
     [wf, activeAgentConfig]
   );
 
-  const chatFocusRef = useRef<HTMLTextAreaElement>(null);
+  const chatFocusRef = useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
     try {
@@ -371,11 +373,16 @@ export default function App() {
     }));
   }, []);
 
+  const appendLog = useCallback((line: string) => {
+    setLogs((prev) => [...prev.slice(-99), line]);
+  }, []);
+
   return (
     <div
       className="app"
       style={{
-        gridTemplateColumns: `${showPalette ? "320px" : "32px"} 1fr ${showChatPanel ? "420px" : "32px"}`,
+        gridTemplateColumns: `${showPalette ? "320px" : "32px"} 1fr`,
+        gridTemplateRows: "1fr",
       }}
     >
       <NodePalette
@@ -400,114 +407,165 @@ export default function App() {
         }}
       />
 
-      {view === "projects" ? (
-        <div className="panel" style={{ gridColumn: "span 2", margin: "12px 8px" }}>
-          <div className="panelHeader">
-            <div className="panelTitle">Projects</div>
-            <div className="row" style={{ gap: 8 }}>
-              <button className="btn btnSmall" onClick={() => setView("workflow")}>
-                Back to workflow
-              </button>
-              <button className="btn btnPrimary btnSmall" onClick={saveCurrentProject}>
-                Save current
-              </button>
+      <div className="workspace">
+        {view === "projects" ? (
+          <div className="panel" style={{ margin: "12px 8px", height: "100%" }}>
+            <div className="panelHeader">
+              <div className="panelTitle">Projects</div>
+              <div className="row" style={{ gap: 8 }}>
+                <button className="btn btnSmall" onClick={() => setView("workflow")}>
+                  Back to workflow
+                </button>
+                <button className="btn btnPrimary btnSmall" onClick={saveCurrentProject}>
+                  Save current
+                </button>
+              </div>
             </div>
-          </div>
-          <div className="panelBody" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div className="row" style={{ gap: 8, alignItems: "center" }}>
-              <input
-                className="input"
-                placeholder="Name this workflow"
-                value={newProjectName}
-                onChange={(e) => setNewProjectName(e.target.value)}
-              />
-              <span className="small muted">Saved locally (mock data)</span>
-            </div>
-            <div className="col" style={{ gap: 8, maxHeight: 480, overflow: "auto" }}>
-              {projects.length === 0 ? (
-                <div className="small muted">No saved projects yet.</div>
-              ) : (
-                projects.map((p) => (
-                  <button
-                    key={p.id}
-                    className="btn"
-                    onClick={() => loadProject(p.id)}
-                    style={{ textAlign: "left" }}
-                  >
-                    <div className="row" style={{ justifyContent: "space-between" }}>
-                      <div>
-                        <div style={{ fontWeight: 650 }}>{p.name}</div>
-                        <div className="small muted">
-                          Saved {new Date(p.savedAt).toLocaleString()}
+            <div className="panelBody" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div className="row" style={{ gap: 8, alignItems: "center" }}>
+                <input
+                  className="input"
+                  placeholder="Name this workflow"
+                  value={newProjectName}
+                  onChange={(e) => setNewProjectName(e.target.value)}
+                />
+                <span className="small muted">Saved locally (mock data)</span>
+              </div>
+              <div className="col" style={{ gap: 8, maxHeight: 480, overflow: "auto" }}>
+                {projects.length === 0 ? (
+                  <div className="small muted">No saved projects yet.</div>
+                ) : (
+                  projects.map((p) => (
+                    <button
+                      key={p.id}
+                      className="btn"
+                      onClick={() => loadProject(p.id)}
+                      style={{ textAlign: "left" }}
+                    >
+                      <div className="row" style={{ justifyContent: "space-between" }}>
+                        <div>
+                          <div style={{ fontWeight: 650 }}>{p.name}</div>
+                          <div className="small muted">
+                            Saved {new Date(p.savedAt).toLocaleString()}
+                          </div>
                         </div>
+                        <span className="kbd">Open</span>
                       </div>
-                      <span className="kbd">Open</span>
-                    </div>
-                  </button>
-                ))
-              )}
+                    </button>
+                  ))
+                )}
+              </div>
             </div>
           </div>
-        </div>
-      ) : (
-        <>
-          <WorkflowCanvas
-            state={wf}
-            onChange={setWf}
-            onSelectNode={handleSelectNode}
-            onRemoveNode={deleteNode}
-            onAddNode={addNode}
-            onStartAttach={({ kind, sourceId, handleId }) => {
-              setShowPalette(true);
-              setPaletteSearch(kind);
-              setPendingAttach({ kind, connectFrom: { nodeId: sourceId, handleId } });
-            }}
-            onViewJson={() => setShowJson(true)}
-            onDeploy={() => {
-              try {
-                const blob = new Blob([JSON.stringify(wf, null, 2)], { type: "application/json" });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement("a");
-                a.href = url;
-                a.download = "workflow.json";
-                a.click();
-                URL.revokeObjectURL(url);
-              } catch (err) {
-                console.error("Deploy download failed", err);
-              }
-            }}
-          />
+        ) : (
+          <div className="workflowStage">
+            <div className="canvasWrap">
+              <WorkflowCanvas
+                state={wf}
+                onChange={setWf}
+                onSelectNode={handleSelectNode}
+                onRemoveNode={deleteNode}
+                onAddNode={addNode}
+                onStartAttach={({ kind, sourceId, handleId }) => {
+                  setShowPalette(true);
+                  setPaletteSearch(kind);
+                  setPendingAttach({ kind, connectFrom: { nodeId: sourceId, handleId } });
+                }}
+                onViewJson={() => setShowJson(true)}
+                onDeploy={() => {
+                  try {
+                    const blob = new Blob([JSON.stringify(wf, null, 2)], { type: "application/json" });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = "workflow.json";
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  } catch (err) {
+                    console.error("Deploy download failed", err);
+                  }
+                }}
+              />
 
-          <div className="panel" style={{ padding: 0, overflow: "visible" }}>
-            <div className="panelHeader" style={{ display: showChatPanel ? undefined : "none" }}>
-              <div className="panelTitle">Chat arena</div>
-              <span className="small muted">Chat reads model/endpoint/key from the AI Agent node.</span>
+              {!showChatPanel ? (
+                <button
+                  className="chatFab"
+                  onClick={() => {
+                    setChatExpanded(false);
+                    setShowChatPanel(true);
+                  }}
+                  title="Open chat"
+                >
+                  Chat
+                </button>
+              ) : null}
             </div>
 
             <div
-              className="panelBody"
-              style={{ display: showChatPanel ? "flex" : "none", flexDirection: "column", gap: 12, minHeight: 0 }}
+              className={`chatDock ${showChatPanel ? "open" : "closed"} ${chatExpanded ? "expanded" : ""}`}
+              style={{ height: showChatPanel ? (chatExpanded ? "60vh" : "32vh") : 0 }}
             >
-              <ChatPanel
-                agent={agent}
-                status={status as any}
-                statusText={statusText}
-                onToolCall={handleToolCall as any}
-                inputPayload={chatInputPayload}
-                focusHotkeyRef={chatFocusRef}
-              />
+              {showChatPanel ? (
+                <div className="panel chatDockPanel">
+                  <div className="panelHeader">
+                    <div className="panelTitle">Assistant Console</div>
+                    <div className="row" style={{ gap: 8 }}>
+                      <button className="btn btnSmall" onClick={() => setChatExpanded((v) => !v)}>
+                        {chatExpanded ? "Compact" : "Expand"}
+                      </button>
+                      <button
+                        className="btn btnSmall"
+                        onClick={() => {
+                          setChatExpanded(false);
+                          setShowChatPanel(false);
+                        }}
+                        title="Collapse"
+                      >
+                        Collapse
+                      </button>
+                    </div>
+                  </div>
+                  <div className="panelBody chatDockContent">
+                    <div className="chatColumn">
+                      <ChatPanel
+                        agent={agent}
+                        status={status as any}
+                        statusText={statusText}
+                        onToolCall={handleToolCall as any}
+                        inputPayload={chatInputPayload}
+                        focusHotkeyRef={chatFocusRef}
+                        onLog={appendLog}
+                        unstyled
+                      />
+                    </div>
+                    <div className="logColumn">
+                      <div className="sectionHeader">
+                        <div className="panelTitle" style={{ margin: 0 }}>Logs</div>
+                        <button className="btn btnSmall" onClick={() => setLogs([])}>
+                          Clear
+                        </button>
+                      </div>
+                      <div className="logListWrap">
+                        {logs.length === 0 ? (
+                          <div className="small muted">Logs will appear here.</div>
+                        ) : (
+                          <div className="logList">
+                            {logs.map((l, idx) => (
+                              <div key={idx} className="logLine">
+                                {l}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
-
-            <button
-              className="collapseBtn edgeToggleRight"
-              onClick={() => setShowChatPanel((v) => !v)}
-              title={showChatPanel ? "Collapse panel" : "Open panel"}
-            >
-              {showChatPanel ? ">" : "<"}
-            </button>
           </div>
-        </>
-      )}
+        )}
+      </div>
 
       {showInspector && selectedNode ? (
         <div className="jsonModal" onClick={closeInspector}>
