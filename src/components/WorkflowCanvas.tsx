@@ -6,10 +6,14 @@ import ReactFlow, {
   addEdge,
   applyEdgeChanges,
   applyNodeChanges,
+  BaseEdge,
+  EdgeLabelRenderer,
+  getBezierPath,
   Handle,
   Position,
   type Connection,
   type Edge,
+  type EdgeProps,
   type Node,
   type NodeProps,
 } from "reactflow";
@@ -21,6 +25,8 @@ export type WorkflowState = {
   nodes: Node[];
   edges: Edge[];
 };
+
+export type NodeRunStatus = "running" | "success" | "error";
 
 export const DEFAULT_WORKFLOW: WorkflowState = {
   nodes: [
@@ -72,7 +78,17 @@ export default function WorkflowCanvas(props: {
   onStartAttach?: (args: { kind: "model" | "memory" | "tool"; sourceId: string; handleId: string }) => void;
   onViewJson?: () => void;
   onDeploy?: () => void;
+  runHighlights?: Record<string, NodeRunStatus>;
 }) {
+  const runHighlightsRef = React.useRef<Record<string, NodeRunStatus>>({});
+  React.useEffect(() => {
+    runHighlightsRef.current = props.runHighlights ?? {};
+  }, [props.runHighlights]);
+  const startAttachRef = React.useRef(props.onStartAttach);
+  React.useEffect(() => {
+    startAttachRef.current = props.onStartAttach;
+  }, [props.onStartAttach]);
+
   const handleRemove = useCallback((id: string) => props.onRemoveNode?.(id), [props.onRemoveNode]);
   const handleAdd = useCallback(
     (t: PaletteNodeType, options?: NodeAddOptions) => props.onAddNode?.(t, options),
@@ -108,6 +124,24 @@ export default function WorkflowCanvas(props: {
 
   const proOptions = useMemo(() => ({ hideAttribution: true }), []);
 
+  const handleDeleteEdge = useCallback(
+    (id: string) =>
+      props.onChange({
+        nodes: props.state.nodes,
+        edges: props.state.edges.filter((e) => e.id !== id),
+      }),
+    [props]
+  );
+
+  const nodesWithStatus = useMemo(
+    () =>
+      props.state.nodes.map((n) => ({
+        ...n,
+        data: { ...(n.data as any), runStatus: props.runHighlights?.[n.id] },
+      })),
+    [props.state.nodes, props.runHighlights]
+  );
+
   const nodeTypes = useMemo(
     () => ({
       aiAgent: (p: NodeProps) => (
@@ -115,7 +149,8 @@ export default function WorkflowCanvas(props: {
           {...p}
           onRemove={handleRemove}
           onAddNode={handleAdd}
-          onStartAttach={props.onStartAttach}
+          onStartAttach={startAttachRef.current ?? undefined}
+          runStatus={runHighlightsRef.current[p.id]}
         />
       ),
       aiTool: (p: NodeProps) => (
@@ -123,7 +158,8 @@ export default function WorkflowCanvas(props: {
           {...p}
           onRemove={handleRemove}
           onAddNode={handleAdd}
-          onStartAttach={props.onStartAttach}
+          onStartAttach={startAttachRef.current ?? undefined}
+          runStatus={runHighlightsRef.current[p.id]}
         />
       ),
       default: (p: NodeProps) => (
@@ -131,10 +167,18 @@ export default function WorkflowCanvas(props: {
           {...p}
           onRemove={handleRemove}
           onAddNode={handleAdd}
+          runStatus={runHighlightsRef.current[p.id]}
         />
       ),
     }),
     [handleRemove, handleAdd]
+  );
+
+  const edgeTypes = useMemo(
+    () => ({
+      deletable: (p: EdgeProps) => <DeletableEdge {...p} onDelete={handleDeleteEdge} />,
+    }),
+    [handleDeleteEdge]
   );
 
   return (
@@ -160,8 +204,8 @@ export default function WorkflowCanvas(props: {
 
       <div style={{ flex: 1, minHeight: 0 }}>
         <ReactFlow
-          nodes={props.state.nodes}
-          edges={props.state.edges}
+          nodes={nodesWithStatus}
+          edges={props.state.edges.map((e) => ({ ...e, type: e.type ?? "deletable" }))}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
@@ -172,6 +216,7 @@ export default function WorkflowCanvas(props: {
           onPaneClick={() => props.onSelectNode(null, false)}
           proOptions={proOptions}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
         >
           <Background />
           <MiniMap />
@@ -187,6 +232,7 @@ type NodeWithActions = NodeProps & {
   onRemove?: (id: string) => void;
   onAddNode?: (t: PaletteNodeType, options?: NodeAddOptions) => void;
   onStartAttach?: (args: { kind: "model" | "memory" | "tool"; sourceId: string; handleId: string }) => void;
+  runStatus?: NodeRunStatus;
 };
 
 function AiAgentNode(props: NodeWithActions) {
@@ -208,8 +254,10 @@ function AiAgentNode(props: NodeWithActions) {
       }
     );
   };
+  const runStatus = (props.runStatus ?? (props.data as any)?.runStatus) as NodeRunStatus | undefined;
+  const runClass = runStatus ? ` nodeRun-${runStatus}` : "";
   return (
-    <div className={`aiAgentNode ${props.selected ? "aiAgentNodeSelected" : ""}`}>
+    <div className={`aiAgentNode ${props.selected ? "aiAgentNodeSelected" : ""}${runClass}`}>
       <Handle id="in" type="target" position={Position.Left} className="aiAgentHandle" />
       <div className="aiAgentBody">
         <div className="aiAgentIcon" aria-hidden="true">{iconForType((props.data as any)?.type ?? props.type)}</div>
@@ -257,8 +305,10 @@ function AiToolNode(props: NodeWithActions) {
       }
     );
   };
+  const runStatus = (props.runStatus ?? (props.data as any)?.runStatus) as NodeRunStatus | undefined;
+  const runClass = runStatus ? ` nodeRun-${runStatus}` : "";
   return (
-    <div className={`aiAgentNode ${props.selected ? "aiAgentNodeSelected" : ""}`}>
+    <div className={`aiAgentNode ${props.selected ? "aiAgentNodeSelected" : ""}${runClass}`}>
       <Handle id="in" type="target" position={Position.Left} className="aiAgentHandle" />
       <div className="aiAgentBody">
         <div className="aiAgentIcon" aria-hidden="true">{iconForType((props.data as any)?.type ?? props.type)}</div>
@@ -320,9 +370,11 @@ function CardNode(props: NodeWithActions) {
   const type = data.type ?? props.type;
   const isTrigger = type === "trigger" || type === "webhook-trigger" || type === "cron";
   const icon = iconForType(type);
+  const runStatus = (props.runStatus ?? (props.data as any)?.runStatus) as NodeRunStatus | undefined;
+  const runClass = runStatus ? ` nodeRun-${runStatus}` : "";
 
   return (
-    <div className={`nodeCard ${props.selected ? "nodeCardSelected" : ""}`}>
+    <div className={`nodeCard ${props.selected ? "nodeCardSelected" : ""}${runClass}`}>
       {isTrigger ? null : <Handle id="in" type="target" position={Position.Top} className="aiAgentHandle" />}
       <div className="nodeCardHeader">
         <div className="row" style={{ alignItems: "center", gap: 8 }}>
@@ -344,6 +396,50 @@ function CardNode(props: NodeWithActions) {
       </div>
       <Handle id="out" type="source" position={Position.Bottom} className="aiAgentHandle" />
     </div>
+  );
+}
+
+function DeletableEdge(props: EdgeProps & { onDelete: (id: string) => void }) {
+  const [edgePath, labelX, labelY] = getBezierPath(props);
+  const [hovered, setHovered] = React.useState(false);
+  return (
+    <>
+      <BaseEdge path={edgePath} {...props} className="edgeDeletable" />
+      <path
+        className="edgeHoverLayer"
+        d={edgePath}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        onClick={(e) => {
+          e.stopPropagation();
+          props.onDelete(props.id);
+        }}
+      />
+      <EdgeLabelRenderer>
+        <div
+          style={{
+            position: "absolute",
+            transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,
+            pointerEvents: "all",
+            opacity: hovered ? 1 : 0,
+            transition: "opacity .12s ease",
+          }}
+          className="edgeDeleteWrapper"
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+        >
+          <button
+            className="edgeDeleteBtn"
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onDelete(props.id);
+            }}
+          >
+            ×
+          </button>
+        </div>
+      </EdgeLabelRenderer>
+    </>
   );
 }
 

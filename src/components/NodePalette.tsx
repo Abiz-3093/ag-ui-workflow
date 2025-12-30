@@ -9,7 +9,7 @@ export type NodeAddOptions = {
   connectFrom?: { nodeId: string; handleId?: string };
 };
 
-type GroupId = "model" | "memory" | "tool" | "ai" | "workflow";
+type GroupId = string;
 
 const MODEL_LIBRARY: PaletteNodeType[] = [
   {
@@ -97,7 +97,7 @@ const TOOL_LIBRARY: PaletteNodeType[] = [
   },
 ];
 
-const GROUPS: { id: GroupId; label: string; description: string; matcher: (t: PaletteNodeType) => boolean }[] = [
+const SPECIAL_GROUPS: { id: GroupId; label: string; description: string; matcher: (t: PaletteNodeType) => boolean }[] = [
   {
     id: "model",
     label: "Model",
@@ -122,13 +122,10 @@ const GROUPS: { id: GroupId; label: string; description: string; matcher: (t: Pa
     description: "Full agent with model/memory/tool ports",
     matcher: (t) => t.type === "ai-agent",
   },
-  {
-    id: "workflow",
-    label: "Workflow",
-    description: "Triggers, HTTP, logic, files",
-    matcher: (t) => !["model", "memory", "tool", "mcp-tool", "ai-agent"].includes(t.type),
-  },
 ];
+
+const isSpecialType = (t: PaletteNodeType) =>
+  ["model", "memory", "tool", "mcp-tool", "ai-agent"].includes(t.type);
 
 export default function NodePalette(props: {
   collapsed?: boolean;
@@ -164,19 +161,45 @@ export default function NodePalette(props: {
     }
   }, [props.pendingKind, setSearch]);
 
+  const categoryGroups = React.useMemo(() => {
+    const map = new Map<string, { id: GroupId; label: string; description: string; matcher: (t: PaletteNodeType) => boolean }>();
+    types
+      .filter((t) => !isSpecialType(t))
+      .forEach((t) => {
+        const label = t.category || "General";
+        const id = `cat:${label.toLowerCase().replace(/\s+/g, "-")}`;
+        if (map.has(id)) return;
+        map.set(id, {
+          id,
+          label,
+          description: `${label} nodes`,
+          matcher: (n) => !isSpecialType(n) && (n.category || "General") === label,
+        });
+      });
+    return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label));
+  }, [types]);
+
+  const allGroups = React.useMemo(() => [...SPECIAL_GROUPS, ...categoryGroups], [categoryGroups]);
+
   const filteredGroups = React.useMemo(() => {
     const q = search.trim().toLowerCase();
-    return GROUPS.filter((g) => `${g.label} ${g.description}`.toLowerCase().includes(q));
-  }, [search]);
+    return allGroups.filter((g) => `${g.label} ${g.description}`.toLowerCase().includes(q));
+  }, [search, allGroups]);
+
+  const searchMatches = React.useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return [];
+    return types.filter((t) => `${t.label} ${t.description} ${t.type}`.toLowerCase().includes(q));
+  }, [search, types]);
 
   const filteredTypes = React.useMemo(() => {
     if (!activeGroup) return [];
-    const matcher = GROUPS.find((g) => g.id === activeGroup)?.matcher;
+    const matcher = allGroups.find((g) => g.id === activeGroup)?.matcher;
     const q = search.trim().toLowerCase();
     const base = matcher ? types.filter(matcher) : [];
     if (!q) return base;
     return base.filter((t) => `${t.label} ${t.description} ${t.type}`.toLowerCase().includes(q));
-  }, [activeGroup, search, types]);
+  }, [activeGroup, search, types, allGroups]);
 
   function addCustom() {
     const label = newLabel.trim();
@@ -295,10 +318,10 @@ export default function NodePalette(props: {
               <div className="col" style={{ gap: 8 }}>
                 <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
                   <button className="btn btnSmall" onClick={() => setActiveGroup(null)}>
-                    ← Back
+                    Back
                   </button>
                   <div style={{ fontWeight: 650 }}>
-                    {GROUPS.find((g) => g.id === activeGroup)?.label} options
+                    {allGroups.find((g) => g.id === activeGroup)?.label} options
                   </div>
                   <span className="small muted">
                     {filteredTypes.length} option{filteredTypes.length === 1 ? "" : "s"}
@@ -321,10 +344,75 @@ export default function NodePalette(props: {
                     >
                       <div className="row" style={{ justifyContent: "space-between" }}>
                         <div className="row" style={{ alignItems: "center", gap: 10 }}>
-                          <span aria-hidden="true">{iconForType(t.type)}</span>
+                          {t.icon ? (
+                            <img src={t.icon} alt="" style={{ height: 20, width: 20, objectFit: "contain" }} />
+                          ) : (
+                            <span aria-hidden="true">{iconForType(t.type)}</span>
+                          )}
                           <div>
                             <div style={{ fontWeight: 650 }}>{t.label}</div>
-                            <div className="small muted">{t.description}</div>
+                            <div className="small muted">
+                              {t.description}
+                              {t.docUrl ? (
+                                <>
+                                  {" · "}
+                                  <a href={t.docUrl} target="_blank" rel="noreferrer" className="small muted">
+                                    Docs
+                                  </a>
+                                </>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
+                        <span className="kbd">+</span>
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            ) : search.trim() ? (
+              <div className="col" style={{ gap: 8 }}>
+                <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ fontWeight: 650 }}>Search results</div>
+                  <span className="small muted">
+                    {searchMatches.length} match{searchMatches.length === 1 ? "" : "es"}
+                  </span>
+                </div>
+                {searchMatches.length === 0 ? (
+                  <div className="small muted">No nodes match that search.</div>
+                ) : (
+                  searchMatches.map((t, idx) => (
+                    <button
+                      key={`${t.type}-${t.label}-${idx}`}
+                      className="btn"
+                      onClick={() => {
+                        props.onAdd(t);
+                        setShowPicker(true);
+                        setActiveGroup(null);
+                        setSearch("");
+                      }}
+                      style={{ textAlign: "left" }}
+                    >
+                      <div className="row" style={{ justifyContent: "space-between" }}>
+                        <div className="row" style={{ alignItems: "center", gap: 10 }}>
+                          {t.icon ? (
+                            <img src={t.icon} alt="" style={{ height: 20, width: 20, objectFit: "contain" }} />
+                          ) : (
+                            <span aria-hidden="true">{iconForType(t.type)}</span>
+                          )}
+                          <div>
+                            <div style={{ fontWeight: 650 }}>{t.label}</div>
+                            <div className="small muted">
+                              {t.description}
+                              {t.docUrl ? (
+                                <>
+                                  {" · "}
+                                  <a href={t.docUrl} target="_blank" rel="noreferrer" className="small muted">
+                                    Docs
+                                  </a>
+                                </>
+                              ) : null}
+                            </div>
                           </div>
                         </div>
                         <span className="kbd">+</span>
@@ -342,7 +430,10 @@ export default function NodePalette(props: {
                     <button
                       key={g.id}
                       className="btn"
-                      onClick={() => setActiveGroup(g.id)}
+                      onClick={() => {
+                        setActiveGroup(g.id);
+                        setSearch("");
+                      }}
                       style={{ textAlign: "left" }}
                     >
                       <div style={{ fontWeight: 650 }}>{g.label}</div>

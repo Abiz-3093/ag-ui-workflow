@@ -1,6 +1,6 @@
 ﻿import React, { useCallback, useMemo, useRef, useState } from "react";
 import type { Node } from "reactflow";
-import WorkflowCanvas, { DEFAULT_WORKFLOW, type WorkflowState } from "./components/WorkflowCanvas";
+import WorkflowCanvas, { DEFAULT_WORKFLOW, type NodeRunStatus, type WorkflowState } from "./components/WorkflowCanvas";
 import NodePalette, { type NodeAddOptions, type PaletteNodeType } from "./components/NodePalette";
 import NodeInspector from "./components/NodeInspector";
 import ChatPanel from "./components/ChatPanel";
@@ -114,6 +114,8 @@ export default function App() {
   const [showInspector, setShowInspector] = useState(false);
   const [showChatPanel, setShowChatPanel] = useState(false);
   const [chatExpanded, setChatExpanded] = useState(false);
+  const [chatHeight, setChatHeight] = useState(360);
+  const [isResizingChat, setIsResizingChat] = useState(false);
   const [paletteSearch, setPaletteSearch] = useState("");
   const [pendingAttach, setPendingAttach] = useState<{
     connectFrom: { nodeId: string; handleId: string };
@@ -127,6 +129,7 @@ export default function App() {
   const [showImport, setShowImport] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
+  const [runHighlights, setRunHighlights] = useState<Record<string, NodeRunStatus>>({});
 
   const selectedNode = useMemo<Node | null>(() => {
     if (!selectedNodeId) return null;
@@ -174,6 +177,82 @@ export default function App() {
 
   const chatFocusRef = useRef<HTMLInputElement>(null);
 
+  const computeChatPathNodeIds = useCallback(() => {
+    const ids = new Set<string>();
+
+    // choose triggers by type
+    const triggerCandidates = wf.nodes.filter((n) => {
+      const t = String((n.data as any)?.type ?? n.type ?? "");
+      return t.toLowerCase().includes("trigger");
+    });
+    const triggers = triggerCandidates.length
+      ? triggerCandidates
+      : (() => {
+          // fallback: roots
+          const targets = new Set(wf.edges.map((e) => e.target));
+          const roots = wf.nodes.filter((n) => !targets.has(n.id));
+          return roots.length ? roots : wf.nodes.slice(0, 1);
+        })();
+
+    triggers.forEach((n) => ids.add(n.id));
+
+    // follow edges from triggers to ai-agent nodes
+    const aiAgents: string[] = [];
+    triggers.forEach((t) => {
+      wf.edges
+        .filter((e) => e.source === t.id)
+        .forEach((e) => {
+          const target = wf.nodes.find((n) => n.id === e.target);
+          const tType = String((target?.data as any)?.type ?? target?.type ?? "");
+          if (target && tType === "ai-agent") {
+            aiAgents.push(target.id);
+            ids.add(target.id);
+          }
+        });
+    });
+
+    // from each ai-agent, find model child (sourceHandle === "model")
+    aiAgents.forEach((agentId) => {
+      const modelEdge = wf.edges.find((e) => e.source === agentId && e.sourceHandle === "model");
+      if (!modelEdge) return;
+      const modelNode = wf.nodes.find((n) => n.id === modelEdge.target);
+      if (modelNode) ids.add(modelNode.id);
+    });
+
+    return Array.from(ids);
+  }, [wf.nodes, wf.edges]);
+
+  const setRunStatusForPath = useCallback(
+    (status: NodeRunStatus, autoClearMs?: number) => {
+      const ids = computeChatPathNodeIds();
+      if (!ids.length) return;
+      setRunHighlights((prev) => {
+        const next = { ...prev };
+        ids.forEach((id) => {
+          next[id] = status;
+        });
+        return next;
+      });
+
+      if (autoClearMs) {
+        window.setTimeout(() => {
+          setRunHighlights((prev) => {
+            const next = { ...prev };
+            ids.forEach((id) => {
+              if (next[id] === status) {
+                delete next[id];
+              }
+            });
+            return next;
+          });
+        }, autoClearMs);
+      }
+    },
+    [computeChatPathNodeIds]
+  );
+  // Backward-compat alias to avoid stale HMR references.
+  const setTriggerRunStatus = setRunStatusForPath;
+
   React.useEffect(() => {
     try {
       const raw = localStorage.getItem("savedWorkflows");
@@ -190,6 +269,22 @@ export default function App() {
       setProjects(MOCK_PROJECTS);
     }
   }, []);
+
+  React.useEffect(() => {
+    setRunHighlights((prev) => {
+      const allowed = new Set(wf.nodes.map((n) => n.id));
+      let changed = false;
+      const next: Record<string, NodeRunStatus> = {};
+      for (const [id, status] of Object.entries(prev)) {
+        if (allowed.has(id)) {
+          next[id] = status;
+        } else {
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [wf.nodes]);
 
   const persistProjects = useCallback((next: typeof projects) => {
     setProjects(next);
@@ -215,6 +310,7 @@ export default function App() {
       if (!match) return;
       setWf(match.workflow);
       setSelectedNodeId(null);
+      setRunHighlights({});
       setView("workflow");
     },
     [projects]
@@ -233,6 +329,7 @@ export default function App() {
           }
           setWf(parsed as WorkflowState);
           setSelectedNodeId(null);
+          setRunHighlights({});
           setView("workflow");
           setShowImport(false);
         } catch (err: any) {
@@ -302,6 +399,7 @@ export default function App() {
     setSelectedNodeId(null);
     setPendingAttach(null);
     setPaletteSearch("");
+    setRunHighlights({});
   }, []);
 
   const deleteNode = useCallback((id: string) => {
@@ -376,6 +474,46 @@ export default function App() {
   const appendLog = useCallback((line: string) => {
     setLogs((prev) => [...prev.slice(-99), line]);
   }, []);
+
+  const handleRunStart = useCallback(() => setRunStatusForPath("running"), [setRunStatusForPath]);
+  const handleRunComplete = useCallback(() => setRunStatusForPath("success", 1400), [setRunStatusForPath]);
+  const handleRunError = useCallback(() => setRunStatusForPath("error", 1800), [setRunStatusForPath]);
+
+  const chatResizeState = useRef<{ startY: number; startHeight: number } | null>(null);
+  const onChatResizeMove = useCallback((e: MouseEvent) => {
+    if (!chatResizeState.current) return;
+    const delta = chatResizeState.current.startY - e.clientY;
+    const next = chatResizeState.current.startHeight + delta;
+    const minH = 220;
+    const maxH = Math.max(minH, Math.min(window.innerHeight * 0.8, next));
+    setChatHeight(maxH);
+  }, []);
+
+  const endChatResize = useCallback(() => {
+    chatResizeState.current = null;
+    setIsResizingChat(false);
+    window.removeEventListener("mousemove", onChatResizeMove);
+    window.removeEventListener("mouseup", endChatResize);
+  }, [onChatResizeMove]);
+
+  const beginChatResize = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      chatResizeState.current = { startY: e.clientY, startHeight: chatHeight };
+      setIsResizingChat(true);
+      window.addEventListener("mousemove", onChatResizeMove);
+      window.addEventListener("mouseup", endChatResize);
+    },
+    [chatHeight, onChatResizeMove, endChatResize]
+  );
+
+  React.useEffect(
+    () => () => {
+      window.removeEventListener("mousemove", onChatResizeMove);
+      window.removeEventListener("mouseup", endChatResize);
+    },
+    [onChatResizeMove, endChatResize]
+  );
 
   return (
     <div
@@ -485,6 +623,7 @@ export default function App() {
                     console.error("Deploy download failed", err);
                   }
                 }}
+                runHighlights={runHighlights}
               />
 
               {!showChatPanel ? (
@@ -502,17 +641,19 @@ export default function App() {
             </div>
 
             <div
-              className={`chatDock ${showChatPanel ? "open" : "closed"} ${chatExpanded ? "expanded" : ""}`}
-              style={{ height: showChatPanel ? (chatExpanded ? "60vh" : "32vh") : 0 }}
+              className={`chatDock ${showChatPanel ? "open" : "closed"} ${chatExpanded ? "expanded" : ""} ${isResizingChat ? "resizing" : ""}`}
+              style={{ height: showChatPanel ? `${chatHeight}px` : 0 }}
             >
+              {showChatPanel ? (
+                <div className="chatResizeHandle" onMouseDown={beginChatResize} title="Drag to resize">
+                  <div className="chatResizeGrip" />
+                </div>
+              ) : null}
               {showChatPanel ? (
                 <div className="panel chatDockPanel">
                   <div className="panelHeader">
                     <div className="panelTitle">Assistant Console</div>
                     <div className="row" style={{ gap: 8 }}>
-                      <button className="btn btnSmall" onClick={() => setChatExpanded((v) => !v)}>
-                        {chatExpanded ? "Compact" : "Expand"}
-                      </button>
                       <button
                         className="btn btnSmall"
                         onClick={() => {
@@ -521,7 +662,7 @@ export default function App() {
                         }}
                         title="Collapse"
                       >
-                        Collapse
+                        ▼
                       </button>
                     </div>
                   </div>
@@ -535,6 +676,9 @@ export default function App() {
                         inputPayload={chatInputPayload}
                         focusHotkeyRef={chatFocusRef}
                         onLog={appendLog}
+                        onRunStart={handleRunStart}
+                        onRunComplete={handleRunComplete}
+                        onRunError={handleRunError}
                         unstyled
                       />
                     </div>

@@ -323,6 +323,32 @@ button,input,textarea{font:inherit;color:inherit}
   background:rgba(225,29,72,.16);
 }
 
+.nodeRun-running{
+  border-color: rgba(91,117,248,.45) !important;
+  box-shadow: 0 0 0 3px rgba(91,117,248,.14), 0 12px 28px rgba(15,23,42,.08);
+}
+.nodeRun-success{
+  border-color: rgba(22,163,74,.7) !important;
+  box-shadow: 0 0 0 3px rgba(22,163,74,.16), 0 12px 28px rgba(22,163,74,.18);
+  animation: nodePulseSuccess 1.3s ease-out;
+}
+.nodeRun-error{
+  border-color: rgba(225,29,72,.6) !important;
+  box-shadow: 0 0 0 3px rgba(225,29,72,.14), 0 12px 28px rgba(225,29,72,.2);
+  animation: nodePulseError 1.1s ease-out;
+}
+
+@keyframes nodePulseSuccess{
+  0%{box-shadow:0 0 0 0 rgba(22,163,74,.22);}
+  60%{box-shadow:0 0 0 10px rgba(22,163,74,.04);}
+  100%{box-shadow:0 0 0 0 rgba(22,163,74,0);}
+}
+@keyframes nodePulseError{
+  0%{box-shadow:0 0 0 0 rgba(225,29,72,.22);}
+  60%{box-shadow:0 0 0 10px rgba(225,29,72,.08);}
+  100%{box-shadow:0 0 0 0 rgba(225,29,72,0);}
+}
+
 /* React Flow base tweaks */
 .react-flow__pane{
   background:radial-gradient(#e2e8f0 1px, transparent 1px) 0 0 / 22px 22px, #f8fafc;
@@ -335,6 +361,30 @@ button,input,textarea{font:inherit;color:inherit}
 }
 .react-flow__node-default.selected{
   box-shadow:none;
+}
+
+.edgeDeletable{
+  stroke:rgba(91,117,248,.8);
+  stroke-width:2px;
+  pointer-events:visibleStroke;
+}
+.edgeHoverLayer{
+  fill:none;
+  stroke:transparent;
+  stroke-width:14px;
+  cursor:pointer;
+}
+.edgeDeleteBtn{
+  border:none;
+  background:transparent;
+  color:#e11d48;
+  padding:0;
+  font-size:18px;
+  line-height:1;
+  cursor:pointer;
+}
+.edgeDeleteBtn:hover{
+  color:#be123c;
 }
 
 .chatFab{
@@ -355,6 +405,7 @@ button,input,textarea{font:inherit;color:inherit}
 .chatDock{
   overflow:hidden;
   transition:height .2s ease, opacity .2s ease;
+  position:relative;
 }
 .chatDock.closed{
   height:0 !important;
@@ -363,6 +414,9 @@ button,input,textarea{font:inherit;color:inherit}
 }
 .chatDock.open{
   opacity:1;
+}
+.chatDock.resizing{
+  user-select:none;
 }
 .chatDock > .panel{
   height:100%;
@@ -408,6 +462,31 @@ button,input,textarea{font:inherit;color:inherit}
   border:1px solid var(--border);
   border-radius:10px;
   background:rgba(0,0,0,.04);
+}
+
+.chatResizeHandle{
+  position:absolute;
+  top:-6px;
+  left:0;
+  right:0;
+  height:12px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:n-resize;
+  z-index:2;
+}
+.chatResizeGrip{
+  width:64px;
+  height:6px;
+  border-radius:999px;
+  background:rgba(0,0,0,.12);
+  box-shadow:0 2px 8px rgba(15,23,42,.12);
+  transition:background .15s ease, transform .15s ease;
+}
+.chatResizeHandle:hover .chatResizeGrip{
+  background:rgba(91,117,248,.3);
+  transform:translateY(-1px);
 }
 
 .chatSection{

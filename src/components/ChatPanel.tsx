@@ -12,6 +12,9 @@ export default function ChatPanel(props: {
   headerExtras?: React.ReactNode;
   unstyled?: boolean;
   onLog?: (line: string) => void;
+  onRunStart?: () => void;
+  onRunComplete?: () => void;
+  onRunError?: (err: Error) => void;
 }) {
   const [draft, setDraft] = useState("");
   const [, force] = useState(0);
@@ -42,6 +45,8 @@ export default function ChatPanel(props: {
     const text = draft.trim();
     if (!text) return;
 
+    props.onRunStart?.();
+
     const userMsg: ChatMessage = { id: uuid(), role: "user", content: text };
     messages.push(userMsg);
     props.onLog?.(`User: ${text}`);
@@ -58,6 +63,7 @@ export default function ChatPanel(props: {
     try {
       await props.agent.runAgent(props.inputPayload ?? {}, handlers);
       props.onLog?.("Agent run completed.");
+      props.onRunComplete?.();
     } catch (err) {
       const msg: ChatMessage = {
         id: uuid(),
@@ -66,6 +72,7 @@ export default function ChatPanel(props: {
       };
       messages.push(msg);
       props.onLog?.(`Agent error: ${String((err as Error)?.message ?? err)}`);
+      props.onRunError?.(err as Error);
       force((x) => x + 1);
     }
   }

@@ -1,6 +1,7 @@
 import React from "react";
 import type { Node } from "reactflow";
 import type { WorkflowState } from "./WorkflowCanvas";
+import { NODE_BASE, type NodeTemplate } from "../nodes/nodeBase";
 
 export default function NodeInspector(props: {
   selected: Node | null;
@@ -29,6 +30,7 @@ export default function NodeInspector(props: {
   const type = String((node.data as any)?.type ?? node.type ?? "");
   const data = (node.data as any) ?? {};
   const config = data.config ?? {};
+  const template: NodeTemplate | undefined = NODE_BASE.find((t) => t.type === type);
 
   const agentConfig = {
     model: config.model ?? "gpt-4o-mini",
@@ -81,6 +83,24 @@ export default function NodeInspector(props: {
               props.onUpdate({ data: { ...(node.data as any), type: e.target.value } })
             }
           />
+
+          {template ? (
+            <div className="col" style={{ gap: 6, padding: "10px 12px", borderRadius: 10, border: "1px solid var(--border)" }}>
+              <div className="row" style={{ alignItems: "center", gap: 8 }}>
+                {template.icon ? (
+                  <img src={template.icon} alt="" style={{ height: 20, width: 20, objectFit: "contain" }} />
+                ) : null}
+                <div style={{ fontWeight: 650 }}>{template.label}</div>
+                {template.category ? <span className="badge">{template.category}</span> : null}
+              </div>
+              <div className="small muted">{template.description}</div>
+              {template.docUrl ? (
+                <a href={template.docUrl} target="_blank" rel="noreferrer" className="small">
+                  View docs
+                </a>
+              ) : null}
+            </div>
+          ) : null}
 
           {type === "ai-agent" ? (
             <div className="col" style={{ padding: 10, borderRadius: 12, border: "1px solid var(--border)", background: "rgba(255,255,255,.04)" }}>
