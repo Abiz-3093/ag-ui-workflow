@@ -9,7 +9,7 @@
   --good:#16a34a;
   --bad:#e11d48;
   --shadow: 0 10px 28px rgba(15,23,42,.08);
-  font-family: "Segoe UI", "Helvetica Neue", Arial, ui-sans-serif, system-ui, -apple-system, "Apple Color Emoji","Segoe UI Emoji";
+  font-family: "InterVariable", sans-serif;
 }
 
 *{box-sizing:border-box}
@@ -25,10 +25,8 @@ button,input,textarea{font:inherit;color:inherit}
 
 .app{
   display:grid;
-  grid-template-columns: 320px 1fr;
+  grid-template-columns: 1fr;
   grid-template-rows: 1fr;
-  gap:14px;
-  padding:14px;
   height:100vh;
 }
 
@@ -43,7 +41,6 @@ button,input,textarea{font:inherit;color:inherit}
 .workflowStage{
   display:flex;
   flex-direction:column;
-  gap:12px;
   min-height:0;
   flex:1;
 }
@@ -62,7 +59,6 @@ button,input,textarea{font:inherit;color:inherit}
 .panel{
   background:linear-gradient(180deg, #fff, #f8fafc);
   border:1px solid var(--border);
-  border-radius:16px;
   box-shadow: var(--shadow);
   overflow:hidden;
   display:flex;
@@ -74,8 +70,8 @@ button,input,textarea{font:inherit;color:inherit}
   display:flex;
   align-items:center;
   justify-content:space-between;
-  border-bottom:1px solid var(--border);
-  background:rgba(0,0,0,.02);
+  border-bottom:1px solid #d6d8dd;
+  background:#ffffff;
 }
 .panelTitle{
   font-size:14px;
@@ -104,24 +100,27 @@ button,input,textarea{font:inherit;color:inherit}
 .hr{height:1px;background:var(--border);margin:12px 0}
 
 .btn{
-  border:1px solid rgba(0,0,0,.08);
+  border:none;
   background:#fff;
   border-radius:12px;
   padding:8px 10px;
   cursor:pointer;
   transition:.12s ease;
+  color: #727070;
 }
 .btn:hover{transform:translateY(-1px);background:rgba(91,117,248,.08)}
 .btnPrimary{
-  border-color: rgba(91,117,248,.35);
-  background: rgba(91,117,248,.14);
+  border-color:rgb(255 111 92);
+  background: rgb(255 111 92);
+  color: white;
+  font-weight:600;
 }
-.btnPrimary:hover{background: rgba(91,117,248,.2)}
+.btnPrimary:hover{background: rgba(255, 111, 92, 0.2)}
 .btnDanger{
   border-color: rgba(225,29,72,.25);
   background: rgba(225,29,72,.1);
 }
-.btnSmall{padding:6px 8px;border-radius:10px;font-size:13px}
+.btnSmall{padding:8px 8px;border-radius:10px;font-size:13px}
 .muted{color:var(--muted)}
 .small{font-size:12px}
 .kbd{
@@ -351,7 +350,7 @@ button,input,textarea{font:inherit;color:inherit}
 
 /* React Flow base tweaks */
 .react-flow__pane{
-  background:radial-gradient(#e2e8f0 1px, transparent 1px) 0 0 / 22px 22px, #f8fafc;
+  background: radial-gradient(#adadad 1px, transparent 0.5px) 0 0 / 15px 15px, #ededed
 }
 .react-flow__node-default{
   border:none !important;
@@ -395,10 +394,11 @@ button,input,textarea{font:inherit;color:inherit}
   border-radius:999px;
   padding:10px 16px;
   border:1px solid rgba(0,0,0,.12);
-  background:linear-gradient(90deg, #4f46e5, #7c3aed);
+  background:rgb(255 111 92);
   color:#fff;
   box-shadow:var(--shadow);
   cursor:pointer;
+  font-weight:600;
 }
 .chatFab:hover{transform:translateX(-50%) translateY(-1px);}
 
@@ -575,3 +575,44 @@ button,input,textarea{font:inherit;color:inherit}
   cursor:pointer;
 }
 .collapseBtn.edgeToggleRight:hover{background:rgba(91,117,248,.1)}
+
+.canvasFabGroup{
+  position:absolute;
+  top:12px;
+  right:12px;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  z-index:5;
+}
+
+.canvasAddBtn{
+  border-radius:50%;
+  width:34px;
+  height:34px;
+  border:1px solid rgba(0,0,0,.12);
+  background:linear-gradient(180deg, #fff, #f3f6ff);
+  box-shadow:var(--shadow);
+  cursor:pointer;
+  font-size:18px;
+  line-height:1;
+  display:grid;
+  place-items:center;
+}
+.canvasAddBtn:hover{background:rgba(91,117,248,.12)}
+
+.paletteDock{
+  position:absolute;
+  top:53px;
+  bottom:1px;
+  right:12px;
+  width:360px;
+  max-width:48vw;
+  max-height:unset;
+  z-index:6;
+}
+.paletteDock .panel{
+  height:100%;
+  display:flex;
+  flex-direction:column;
+}

@@ -122,11 +122,14 @@ export default function App() {
     kind: "model" | "memory" | "tool";
   } | null>(null);
   const [view, setView] = useState<"workflow" | "projects">("workflow");
+  const [currentProject, setCurrentProject] = useState<{ id: string; name: string } | null>(null);
+  const [workflowName, setWorkflowName] = useState("");
   const [projects, setProjects] = useState<
     { id: string; name: string; workflow: WorkflowState; savedAt: number }[]
   >([]);
   const [newProjectName, setNewProjectName] = useState("");
   const [showImport, setShowImport] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(true);
   const [importError, setImportError] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [runHighlights, setRunHighlights] = useState<Record<string, NodeRunStatus>>({});
@@ -312,25 +315,28 @@ export default function App() {
       };
       const next = [entry, ...projects];
       persistProjects(next);
+      setCurrentProject({ id: entry.id, name: entry.name });
+      setWorkflowName(entry.name);
       return entry;
     },
     [persistProjects, projects, wf]
   );
 
   const saveCurrentProject = useCallback(() => {
-    addSavedWorkflow(newProjectName);
+    const nameToSave = newProjectName.trim() || workflowName;
+    addSavedWorkflow(nameToSave);
     setNewProjectName("");
     setView("projects");
-  }, [addSavedWorkflow, newProjectName]);
+  }, [addSavedWorkflow, newProjectName, workflowName]);
 
   const quickSaveWorkflow = useCallback(() => {
-    const suggestedName = newProjectName.trim() || `Workflow ${projects.length + 1}`;
+    const suggestedName = (workflowName || newProjectName).trim() || `Workflow ${projects.length + 1}`;
     const name = window.prompt("Save workflow as", suggestedName);
     if (name === null) return;
     const entry = addSavedWorkflow(name);
     setNewProjectName("");
     appendLog(`Saved workflow "${entry.name}".`);
-  }, [addSavedWorkflow, appendLog, newProjectName, projects.length]);
+  }, [addSavedWorkflow, appendLog, newProjectName, projects.length, workflowName]);
 
   const loadProject = useCallback(
     (id: string) => {
@@ -339,6 +345,8 @@ export default function App() {
       setWf(match.workflow);
       setSelectedNodeId(null);
       setRunHighlights({});
+      setCurrentProject({ id: match.id, name: match.name });
+      setWorkflowName(match.name);
       setView("workflow");
     },
     [projects]
@@ -358,6 +366,8 @@ export default function App() {
           setWf(parsed as WorkflowState);
           setSelectedNodeId(null);
           setRunHighlights({});
+          setCurrentProject(null);
+          setWorkflowName("");
           setView("workflow");
           setShowImport(false);
         } catch (err: any) {
@@ -428,6 +438,8 @@ export default function App() {
     setPendingAttach(null);
     setPaletteSearch("");
     setRunHighlights({});
+    setCurrentProject(null);
+    setWorkflowName("");
   }, []);
 
   const startFromScratch = useCallback(() => {
@@ -672,36 +684,64 @@ export default function App() {
     [onChatResizeMove, endChatResize]
   );
 
+  const paletteRef = useRef<HTMLDivElement | null>(null);
+  const canvasWrapRef = useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    if (!showPalette) return;
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as Node | null;
+      if (paletteRef.current && paletteRef.current.contains(target as Node)) return;
+      setShowPalette(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [showPalette]);
+
   return (
     <div
       className="app"
       style={{
-        gridTemplateColumns: `${showPalette ? "320px" : "32px"} 1fr`,
-        gridTemplateRows: "1fr",
+        gridTemplateColumns: `${showSidebar ? "200px" : "64px"} 1fr`,
       }}
     >
-      <NodePalette
-        collapsed={!showPalette}
-        onToggle={() => {
-          setView("workflow");
-          setShowPalette((v) => !v);
-        }}
-        onAdd={(t) => addNode(t)}
-        onClear={reset}
-        searchTerm={paletteSearch}
-        onSearchChange={setPaletteSearch}
-        pendingKind={pendingAttach?.kind}
-        onOpenProjects={() => {
-          setView("projects");
-          setShowPalette(false);
-        }}
-        onOpenImport={() => {
-          setShowImport(true);
-          setShowPalette(false);
-          setView("workflow");
-        }}
-      />
-
+      <div className="panel" style={{ minHeight: 0 }}>
+        <div className="panelHeader">
+          {showSidebar ? <div className="panelTitle">Deep View</div> : null}
+          <button className="btn btnSmall" onClick={() => setShowSidebar((v) => !v)} title="Toggle sidebar">
+            <i className={`fa-solid ${showSidebar ? "fa-angles-left" : "fa-angles-right"}`} />
+          </button>
+        </div>
+        <div className="panelBody">
+          <div className="col" style={{ gap: 10 }}>
+            <button
+              className="btn"
+              onClick={() => {
+                setView("projects");
+                setShowPalette(false);
+              }}
+              title="Projects"
+              style={{ justifyContent: "flex-start", display: "flex", alignItems: "center", gap: 8 }}
+            >
+              <i className="fa-solid fa-folder-open" aria-hidden="true" />
+              {showSidebar ? <span>Projects</span> : null}
+            </button>
+            <button
+              className="btn"
+              onClick={() => {
+                setShowImport(true);
+                setShowPalette(false);
+                setView("workflow");
+              }}
+              title="Import workflow"
+              style={{ justifyContent: "flex-start", display: "flex", alignItems: "center", gap: 8 }}
+            >
+              <i className="fa-solid fa-file-import" aria-hidden="true" />
+              {showSidebar ? <span>Import</span> : null}
+            </button>
+          </div>
+        </div>
+      </div>
       <div className="workspace">
         {view === "projects" ? (
           <div className="panel" style={{ margin: "12px 8px", height: "100%" }}>
@@ -753,13 +793,13 @@ export default function App() {
             </div>
           </div>
         ) : (
-          <div className="workflowStage">
-            <div className="canvasWrap">
-              <WorkflowCanvas
-                state={wf}
-                onChange={setWf}
-                onSelectNode={handleSelectNode}
-                onSelectionChange={(selectedNodes) => {
+      <div className="workflowStage">
+        <div className="canvasWrap" ref={canvasWrapRef}>
+          <WorkflowCanvas
+            state={wf}
+            onChange={setWf}
+            onSelectNode={handleSelectNode}
+            onSelectionChange={(selectedNodes) => {
                   setWf((prev) => ({
                     ...prev,
                     nodes: prev.nodes.map((node) => ({
@@ -795,13 +835,51 @@ export default function App() {
                     console.error("Deploy download failed", err);
                   }
                 }}
+                workflowName={workflowName}
+                onWorkflowNameChange={setWorkflowName}
+                isExistingWorkflow={!!currentProject}
+                onOpenPalette={() => {
+                  setView("workflow");
+                  setShowPalette(true);
+                }}
+                onClosePalette={() => setShowPalette(false)}
+                onDropAdd={(t, options) => {
+                  addNode(t, options);
+                  setShowPalette(false);
+                }}
                 runHighlights={runHighlights}
               />
+          {showPalette ? (
+            <div className="paletteDock" ref={paletteRef}>
+              <NodePalette
+                collapsed={false}
+                hideCollapseToggle
+                onToggle={() => setShowPalette(false)}
+                onAdd={(t) => {
+                  addNode(t);
+                  setShowPalette(false);
+                }}
+                onClear={reset}
+                searchTerm={paletteSearch}
+                onSearchChange={setPaletteSearch}
+                pendingKind={pendingAttach?.kind}
+                onOpenProjects={() => {
+                  setView("projects");
+                  setShowPalette(false);
+                }}
+                onOpenImport={() => {
+                  setShowImport(true);
+                  setShowPalette(false);
+                  setView("workflow");
+                }}
+              />
+            </div>
+          ) : null}
 
-              {!showChatPanel ? (
-                <button
-                  className="chatFab"
-                  onClick={() => {
+          {!showChatPanel ? (
+            <button
+              className="chatFab"
+              onClick={() => {
                     setChatExpanded(false);
                     setShowChatPanel(true);
                   }}
@@ -974,6 +1052,7 @@ export default function App() {
           </div>
         </div>
       ) : null}
+
     </div>
   );
 }

@@ -14,38 +14,10 @@ type GroupId = string;
 const MODEL_LIBRARY: PaletteNodeType[] = [
   {
     type: "model",
-    label: "gpt-4o",
-    description: "OpenAI flagship chat model",
-    category: "Models",
-    defaults: { config: { model: "gpt-4o" } },
-  },
-  {
-    type: "model",
-    label: "gpt-4o-mini",
-    description: "Fast & cost-efficient OpenAI model",
+    label: "LLM Model",
+    description: "Chat/completion model",
     category: "Models",
     defaults: { config: { model: "gpt-4o-mini" } },
-  },
-  {
-    type: "model",
-    label: "gpt-4.1-mini",
-    description: "OpenAI balanced model",
-    category: "Models",
-    defaults: { config: { model: "gpt-4.1-mini" } },
-  },
-  {
-    type: "model",
-    label: "claude-3-opus",
-    description: "Anthropic Opus",
-    category: "Models",
-    defaults: { config: { model: "claude-3-opus" } },
-  },
-  {
-    type: "model",
-    label: "llama-3-70b",
-    description: "Meta Llama 3 70B",
-    category: "Models",
-    defaults: { config: { model: "llama-3-70b" } },
   },
 ];
 
@@ -97,29 +69,39 @@ const TOOL_LIBRARY: PaletteNodeType[] = [
   },
 ];
 
-const SPECIAL_GROUPS: { id: GroupId; label: string; description: string; matcher: (t: PaletteNodeType) => boolean }[] = [
+const SPECIAL_GROUPS: {
+  id: GroupId;
+  label: string;
+  description: string;
+  icon: string;
+  matcher: (t: PaletteNodeType) => boolean;
+}[] = [
   {
     id: "model",
     label: "Model",
     description: "Chat/completion models",
+    icon: "fa-solid fa-microchip",
     matcher: (t) => t.type === "model",
   },
   {
     id: "memory",
     label: "Memory",
     description: "Pick how conversations are stored",
+    icon: "fa-solid fa-database",
     matcher: (t) => t.type === "memory",
   },
   {
     id: "tool",
     label: "Tool",
     description: "Add agent tools (actions/retrieval)",
+    icon: "fa-solid fa-screwdriver-wrench",
     matcher: (t) => t.type === "tool" || t.type === "mcp-tool",
   },
   {
     id: "ai",
     label: "AI Agent",
     description: "Full agent with model/memory/tool ports",
+    icon: "fa-solid fa-robot",
     matcher: (t) => t.type === "ai-agent",
   },
 ];
@@ -137,9 +119,10 @@ export default function NodePalette(props: {
   pendingKind?: "model" | "memory" | "tool";
   onOpenProjects?: () => void;
   onOpenImport?: () => void;
+  hideCollapseToggle?: boolean;
 }) {
   const [types, setTypes] = React.useState<PaletteNodeType[]>(() => [
-    ...NODE_BASE,
+    ...NODE_BASE.filter((t) => t.type !== "model"),
     ...MODEL_LIBRARY,
     ...MEMORY_LIBRARY,
     ...TOOL_LIBRARY,
@@ -155,53 +138,28 @@ export default function NodePalette(props: {
   const [activeFilter, setActiveFilter] = React.useState<"all" | "trigger" | "ai" | "model" | "memory" | "tool">(
     "all"
   );
-  const [recent, setRecent] = React.useState<PaletteNodeType[]>(() => {
-    try {
-      const raw = localStorage.getItem("recentNodes");
-      if (raw) return JSON.parse(raw);
-    } catch {
-      //
-    }
-    return [];
-  });
-  const [favorites, setFavorites] = React.useState<string[]>(() => {
-    try {
-      const raw = localStorage.getItem("favoriteNodes");
-      if (raw) return JSON.parse(raw);
-    } catch {
-      //
-    }
-    return [];
-  });
-
-  React.useEffect(() => {
-    if (props.pendingKind) {
-      setShowPicker(true);
-      setActiveGroup(props.pendingKind);
-      setSearch(props.pendingKind);
-    }
-  }, [props.pendingKind, setSearch]);
-
-  const persistRecent = React.useCallback((nodes: PaletteNodeType[]) => {
-    setRecent(nodes);
-    try {
-      localStorage.setItem("recentNodes", JSON.stringify(nodes.slice(0, 8)));
-    } catch {
-      //
-    }
-  }, []);
-
-  const persistFavorites = React.useCallback((ids: string[]) => {
-    setFavorites(ids);
-    try {
-      localStorage.setItem("favoriteNodes", JSON.stringify(ids));
-    } catch {
-      //
-    }
-  }, []);
 
   const categoryGroups = React.useMemo(() => {
-    const map = new Map<string, { id: GroupId; label: string; description: string; matcher: (t: PaletteNodeType) => boolean }>();
+    const map = new Map<
+      string,
+      { id: GroupId; label: string; description: string; matcher: (t: PaletteNodeType) => boolean; icon?: string }
+    >();
+    const iconForCategory = (label: string) => {
+      const key = label.toLowerCase();
+      if (/model/.test(key)) return "fa-solid fa-microchip";
+      if (/miscellaneous/.test(key)) return "fa-solid fa-ellipsis";
+      if (/trigger/.test(key)) return "fa-solid fa-bolt";
+      if (/ai/.test(key)) return "fa-solid fa-brain";
+      if (/integration/.test(key)) return "fa-solid fa-plug";
+      if (/core/.test(key)) return "fa-solid fa-layer-group";
+      if (/analytics/.test(key)) return "fa-regular fa-chart-bar";
+      if (/communication|comunication/.test(key)) return "fa-solid fa-globe";
+      if (/data/.test(key)) return "fa-solid fa-table";
+      if (/file/.test(key)) return "fa-solid fa-file-lines";
+      if (/logic/.test(key)) return "fa-solid fa-diagram-project";
+      return "fa-solid fa-layer-group";
+    };
+
     types
       .filter((t) => !isSpecialType(t))
       .forEach((t) => {
@@ -213,12 +171,38 @@ export default function NodePalette(props: {
           label,
           description: `${label} nodes`,
           matcher: (n) => !isSpecialType(n) && (n.category || "General") === label,
+          icon: iconForCategory(label),
         });
       });
+
+    // Merge multiple Miscellaneous entries into one
+    const miscIds = Array.from(map.keys()).filter((key) => key.includes("miscellaneous"));
+    if (miscIds.length > 1) {
+      miscIds.forEach((id) => map.delete(id));
+      map.set("cat:miscellaneous", {
+        id: "cat:miscellaneous",
+        label: "Miscellaneous",
+        description: "Miscellaneous nodes",
+        matcher: (n) => !isSpecialType(n) && /miscellaneous/i.test(n.category || "Miscellaneous"),
+        icon: "fa-solid fa-ellipsis",
+      });
+    }
+
     return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label));
   }, [types]);
 
   const allGroups = React.useMemo(() => [...SPECIAL_GROUPS, ...categoryGroups], [categoryGroups]);
+
+  React.useEffect(() => {
+    if (props.pendingKind) {
+      const hasGroup = allGroups.some((g) => g.id === props.pendingKind);
+      setShowPicker(true);
+      if (hasGroup) {
+        setActiveGroup(props.pendingKind);
+      }
+      setSearch(props.pendingKind);
+    }
+  }, [props.pendingKind, setSearch, allGroups]);
 
   const matchesFilter = React.useCallback(
     (t: PaletteNodeType) => {
@@ -268,18 +252,16 @@ export default function NodePalette(props: {
     setNewDesc("");
   }
 
-  const toggleFavorite = (id: string) => {
-    const next = favorites.includes(id) ? favorites.filter((f) => f !== id) : [...favorites, id];
-    persistFavorites(next);
-  };
-
   const handleAdd = (t: PaletteNodeType) => {
     props.onAdd(t);
     setShowPicker(true);
     setActiveGroup(null);
     setSearch("");
-    const nextRecent = [t, ...recent.filter((r) => r.type !== t.type || r.label !== t.label)].slice(0, 8);
-    persistRecent(nextRecent);
+  };
+
+  const handleDragStart = (e: React.DragEvent, t: PaletteNodeType) => {
+    e.dataTransfer.setData("application/reactflow-node", JSON.stringify(t));
+    e.dataTransfer.effectAllowed = "move";
   };
 
   const highlight = (text: string, q: string) => {
@@ -299,19 +281,6 @@ export default function NodePalette(props: {
 
   return (
     <div className="panel" style={{ position: "relative", overflow: "visible" }}>
-      <div className="panelHeader" style={{ display: props.collapsed ? "none" : undefined }}>
-        <div className="panelTitle">
-          <img
-            src="../public/assets/fevicon.png"
-            alt="Deepview"
-            style={{ height: 32, width: "auto", display: "block" }}
-          />
-        </div>
-        <button className="btn btnSmall btnDanger" onClick={props.onClear} title="Reset graph">
-          Reset
-        </button>
-      </div>
-
       {props.collapsed ? (
         <button
           style={{
@@ -383,59 +352,17 @@ export default function NodePalette(props: {
       ) : null}
 
       <div className="panelBody" style={{ display: props.collapsed ? "none" : undefined }}>
-        <div className="small muted">
-          Drag & drop is possible, but for this demo click to add. Tip: select a node to edit its details.
-        </div>
-
-        <div className="hr" />
 
         {showPicker ? (
           <div className="col" style={{ gap: 12 }}>
-            <div className="row" style={{ justifyContent: "space-between", alignItems: "center" }}>
-              <div style={{ fontWeight: 650 }}>Nodes</div>
-              <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
-                {(["all", "trigger", "ai", "model", "memory", "tool"] as const).map((f) => (
-                  <button
-                    key={f}
-                    className={`btn btnSmall ${activeFilter === f ? "btnPrimary" : ""}`}
-                    onClick={() => setActiveFilter(f)}
-                    title={`Show ${f}`}
-                  >
-                    {f === "all" ? "All" : f.charAt(0).toUpperCase() + f.slice(1)}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <div style={{ fontWeight: 650 }}>What happens next?</div>
 
             <input
               className="input"
-              placeholder="Search groups or nodes (e.g. model, memory, tool)"
+              placeholder="Search nodes..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
-
-            {recent.length ? (
-              <div className="col" style={{ gap: 6 }}>
-                <div className="small muted">Recent</div>
-                <div className="row" style={{ flexWrap: "wrap", gap: 6 }}>
-                  {recent.map((t, idx) => (
-                    <button
-                      key={`${t.type}-${t.label}-recent-${idx}`}
-                      className="pill"
-                      onClick={() => handleAdd(t)}
-                      title={t.description}
-                    >
-                      {t.icon ? (
-                        <img src={t.icon} alt="" style={{ height: 14, width: 14, objectFit: "contain" }} />
-                      ) : (
-                        <span aria-hidden="true">{iconForType(t.type)}</span>
-                      )}
-                      <span>{t.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
 
             {activeGroup ? (
               <div className="col" style={{ gap: 8 }}>
@@ -444,7 +371,14 @@ export default function NodePalette(props: {
                     Back
                   </button>
                   <div style={{ fontWeight: 650 }}>
-                    {allGroups.find((g) => g.id === activeGroup)?.label} options
+                    <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      {(() => {
+                        const grp = allGroups.find((g) => g.id === activeGroup);
+                        if (!grp) return null;
+                        return grp.icon ? <i className={grp.icon} aria-hidden="true" /> : null;
+                      })()}
+                      {allGroups.find((g) => g.id === activeGroup)?.label} options
+                    </span>
                   </div>
                   <span className="small muted">
                     {filteredTypes.length} option{filteredTypes.length === 1 ? "" : "s"}
@@ -459,6 +393,8 @@ export default function NodePalette(props: {
                       className="btn"
                       onClick={() => handleAdd(t)}
                       style={{ textAlign: "left" }}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, t)}
                     >
                       <div className="row" style={{ justifyContent: "space-between" }}>
                         <div className="row" style={{ alignItems: "center", gap: 10 }}>
@@ -470,11 +406,6 @@ export default function NodePalette(props: {
                           <div>
                             <div style={{ fontWeight: 650, display: "flex", alignItems: "center", gap: 6 }}>
                               {highlight(t.label, search)}
-                              {favorites.includes(t.type) ? (
-                                <span className="badge" style={{ padding: "2px 6px" }}>
-                                  Fav
-                                </span>
-                              ) : null}
                               {/trigger/i.test(t.type) ? (
                                 <span className="badge" style={{ padding: "2px 6px" }}>
                                   Trigger
@@ -495,17 +426,6 @@ export default function NodePalette(props: {
                           </div>
                         </div>
                         <div className="row" style={{ alignItems: "center", gap: 6 }}>
-                          <button
-                            className="btn btnSmall"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleFavorite(t.type);
-                            }}
-                            title="Favorite"
-                            style={{ padding: "2px 6px" }}
-                          >
-                            {favorites.includes(t.type) ? "★" : "☆"}
-                          </button>
                           <span className="kbd">+</span>
                         </div>
                       </div>
@@ -530,6 +450,8 @@ export default function NodePalette(props: {
                       className="btn"
                       onClick={() => handleAdd(t)}
                       style={{ textAlign: "left" }}
+                      draggable
+                      onDragStart={(e) => handleDragStart(e, t)}
                     >
                       <div className="row" style={{ justifyContent: "space-between" }}>
                         <div className="row" style={{ alignItems: "center", gap: 10 }}>
@@ -541,11 +463,6 @@ export default function NodePalette(props: {
                           <div>
                             <div style={{ fontWeight: 650, display: "flex", alignItems: "center", gap: 6 }}>
                               {highlight(t.label, search)}
-                              {favorites.includes(t.type) ? (
-                                <span className="badge" style={{ padding: "2px 6px" }}>
-                                  Fav
-                                </span>
-                              ) : null}
                               {/trigger/i.test(t.type) ? (
                                 <span className="badge" style={{ padding: "2px 6px" }}>
                                   Trigger
@@ -566,17 +483,6 @@ export default function NodePalette(props: {
                           </div>
                         </div>
                         <div className="row" style={{ alignItems: "center", gap: 6 }}>
-                          <button
-                            className="btn btnSmall"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleFavorite(t.type);
-                            }}
-                            title="Favorite"
-                            style={{ padding: "2px 6px" }}
-                          >
-                            {favorites.includes(t.type) ? "★" : "☆"}
-                          </button>
                           <span className="kbd">+</span>
                         </div>
                       </div>
@@ -597,10 +503,13 @@ export default function NodePalette(props: {
                         setActiveGroup(g.id);
                         setSearch("");
                       }}
-                      style={{ textAlign: "left" }}
+                      style={{ textAlign: "left", display: "flex", alignItems: "flex-start", gap: 8 }}
                     >
-                      <div style={{ fontWeight: 650 }}>{g.label}</div>
-                      <div className="small muted">{g.description}</div>
+                      {g.icon ? <i className={g.icon} aria-hidden="true" style={{ marginTop: 2 }} /> : null}
+                      <div>
+                        <div style={{ fontWeight: 650 }}>{g.label}</div>
+                        <div className="small muted">{g.description}</div>
+                      </div>
                     </button>
                   ))
                 )}
@@ -611,13 +520,15 @@ export default function NodePalette(props: {
 
         <div className="hr" />
       </div>
-      <button
-        className="collapseBtn edgeToggle"
-        onClick={props.onToggle}
-        title={props.collapsed ? "Open panel" : "Collapse panel"}
-      >
-        {props.collapsed ? ">" : "<"}
-      </button>
+      {props.hideCollapseToggle ? null : (
+        <button
+          className="collapseBtn edgeToggle"
+          onClick={props.onToggle}
+          title={props.collapsed ? "Open panel" : "Collapse panel"}
+        >
+          {props.collapsed ? ">" : "<"}
+        </button>
+      )}
     </div>
   );
 }

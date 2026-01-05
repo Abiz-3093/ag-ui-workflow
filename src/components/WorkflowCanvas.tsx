@@ -16,6 +16,8 @@ import ReactFlow, {
   type EdgeProps,
   type Node,
   type NodeProps,
+  useReactFlow,
+  ReactFlowProvider,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import type { NodeAddOptions, PaletteNodeType } from "./NodePalette";
@@ -34,7 +36,7 @@ export const DEFAULT_WORKFLOW: WorkflowState = {
       id: "1",
       type: "default",
       position: { x: 120, y: 120 },
-      data: { label: "Trigger", type: "trigger", config: { schedule: "manual" } },
+      data: { label: "Chat Trigger", type: "chat-trigger", config: { schedule: "manual" } },
     },
     {
       id: "3",
@@ -69,7 +71,7 @@ export const DEFAULT_WORKFLOW: WorkflowState = {
   ],
 };
 
-export default function WorkflowCanvas(props: {
+type WorkflowCanvasProps = {
   state: WorkflowState;
   onChange: (next: WorkflowState) => void;
   onSelectNode: (node: Node | null, openInspector?: boolean) => void;
@@ -81,7 +83,15 @@ export default function WorkflowCanvas(props: {
   runHighlights?: Record<string, NodeRunStatus>;
   onSaveWorkflow?: () => void;
   onSelectionChange?: (nodes: Node[]) => void;
-}) {
+  workflowName?: string;
+  onWorkflowNameChange?: (name: string) => void;
+  isExistingWorkflow?: boolean;
+  onOpenPalette?: () => void;
+  onClosePalette?: () => void;
+  onDropAdd?: (t: PaletteNodeType, options?: NodeAddOptions) => void;
+};
+
+function WorkflowCanvasInner(props: WorkflowCanvasProps) {
   const stateRef = React.useRef<WorkflowState>(props.state);
   React.useEffect(() => {
     stateRef.current = props.state;
@@ -197,19 +207,41 @@ export default function WorkflowCanvas(props: {
     [handleDeleteEdge]
   );
 
+  const reactFlowInstance = useReactFlow();
+  const flowWrapper = React.useRef<HTMLDivElement | null>(null);
+
+  const onDragOver = useCallback((event: React.DragEvent) => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+  }, []);
+
+  const onDrop = useCallback(
+    (event: React.DragEvent) => {
+      event.preventDefault();
+      const raw = event.dataTransfer.getData("application/reactflow-node");
+      if (!raw) return;
+      try {
+        const template = JSON.parse(raw) as PaletteNodeType;
+        const bounds = flowWrapper.current?.getBoundingClientRect();
+        const position = reactFlowInstance.project({
+          x: event.clientX - (bounds?.left ?? 0),
+          y: event.clientY - (bounds?.top ?? 0),
+        });
+        props.onDropAdd?.(template, { position });
+      } catch (err) {
+        console.warn("Failed to drop node", err);
+      }
+    },
+    [props, reactFlowInstance]
+  );
+
   return (
     <div className="panel" style={{ overflow: "hidden" }}>
       <div className="panelHeader">
         <div className="panelTitle">
-          🧠 Workflow Canvas <span className="badge">React Flow</span>
+          {props.workflowName ? <span>{props.workflowName}</span> : null}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span className="small muted">Click nodes to edit. Drag to rearrange.</span>
-          {props.onViewJson ? (
-            <button className="btn btnSmall" onClick={props.onViewJson} title="View workflow JSON">
-              View JSON
-            </button>
-          ) : null}
           {props.onSaveWorkflow ? (
             <button
               className="btn btnPrimary btnSmall"
@@ -227,13 +259,27 @@ export default function WorkflowCanvas(props: {
         </div>
       </div>
 
-      <div style={{ flex: 1, minHeight: 0 }}>
+      <div style={{ flex: 1, minHeight: 0, position: "relative" }} ref={flowWrapper}>
+        <div className="canvasFabGroup">
+          {props.onOpenPalette ? (
+            <button className="canvasAddBtn" onClick={props.onOpenPalette} title="Add node">
+              <i className="fa-solid fa-plus" aria-hidden="true" />
+            </button>
+          ) : null}
+          {props.onViewJson ? (
+            <button className="canvasAddBtn" onClick={props.onViewJson} title="View workflow JSON">
+              <i className="fa-regular fa-eye" aria-hidden="true" />
+            </button>
+          ) : null}
+        </div>
         <ReactFlow
           nodes={nodesWithStatus}
           edges={props.state.edges.map((e) => ({ ...e, type: e.type ?? "deletable" }))}
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          onDrop={onDrop}
+          onDragOver={onDragOver}
           selectionOnDrag
           panOnDrag
           snapToGrid
@@ -245,7 +291,10 @@ export default function WorkflowCanvas(props: {
             }
           }
           onNodeDoubleClick={(_, n) => props.onSelectNode(n, true)}
-          onPaneClick={() => props.onSelectNode(null, false)}
+          onPaneClick={() => {
+            props.onSelectNode(null, false);
+            props.onClosePalette?.();
+          }}
           proOptions={proOptions}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
@@ -257,6 +306,14 @@ export default function WorkflowCanvas(props: {
         </ReactFlow>
       </div>
     </div>
+  );
+}
+
+export default function WorkflowCanvas(props: WorkflowCanvasProps) {
+  return (
+    <ReactFlowProvider>
+      <WorkflowCanvasInner {...props} />
+    </ReactFlowProvider>
   );
 }
 
@@ -475,4 +532,5 @@ function DeletableEdge(props: EdgeProps & { onDelete: (id: string) => void }) {
     </>
   );
 }
+
 

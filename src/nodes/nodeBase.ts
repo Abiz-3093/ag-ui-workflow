@@ -13,7 +13,8 @@ export type NodeTemplate = {
 };
 
 const CORE_NODE_TEMPLATES: NodeTemplate[] = [
-  { type: "trigger", label: "Trigger", description: "Start the workflow", category: "Core" },
+  { type: "chat-trigger", label: "Chat Trigger", description: "Start from chat input", category: "Triggers" },
+  { type: "workflow-trigger", label: "Workflow Trigger", description: "Start the workflow", category: "Triggers" },
   { type: "webhook-trigger", label: "Webhook Trigger", description: "Start from inbound HTTP call", category: "Triggers" },
   { type: "cron", label: "Schedule", description: "Run on an interval or cron", category: "Triggers" },
   { type: "ai-agent", label: "AI Agent", description: "LLM with model/memory/tools", category: "AI" },
