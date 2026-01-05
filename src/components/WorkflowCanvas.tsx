@@ -79,8 +79,7 @@ export default function WorkflowCanvas(props: {
   onViewJson?: () => void;
   onDeploy?: () => void;
   runHighlights?: Record<string, NodeRunStatus>;
-  onRunWorkflow?: () => void;
-  isRunningWorkflow?: boolean;
+  onSaveWorkflow?: () => void;
   onSelectionChange?: (nodes: Node[]) => void;
 }) {
   const stateRef = React.useRef<WorkflowState>(props.state);
@@ -211,15 +210,13 @@ export default function WorkflowCanvas(props: {
               View JSON
             </button>
           ) : null}
-          {props.onRunWorkflow ? (
+          {props.onSaveWorkflow ? (
             <button
               className="btn btnPrimary btnSmall"
-              onClick={props.onRunWorkflow}
-              title="Run workflow"
-              disabled={props.isRunningWorkflow}
-              style={props.isRunningWorkflow ? { opacity: 0.6, cursor: "not-allowed" } : undefined}
+              onClick={props.onSaveWorkflow}
+              title="Save workflow"
             >
-              {props.isRunningWorkflow ? "Running…" : "Run"}
+              Save
             </button>
           ) : null}
           {props.onDeploy ? (

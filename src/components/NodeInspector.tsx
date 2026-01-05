@@ -3,12 +3,16 @@ import type { Node } from "reactflow";
 import type { WorkflowState } from "./WorkflowCanvas";
 import { NODE_BASE, type NodeTemplate } from "../nodes/nodeBase";
 
+type SavedWorkflow = { id: string; name: string; workflow: WorkflowState; savedAt: number };
+
 export default function NodeInspector(props: {
   selected: Node | null;
   state: WorkflowState;
   onUpdate: (patch: Partial<Node>) => void;
   onUpdateNode: (id: string, patch: Partial<Node>) => void;
   onClose?: () => void;
+  savedWorkflows: SavedWorkflow[];
+  onInsertWorkflow?: (workflow: WorkflowState, meta?: { id: string; name: string }) => void;
 }) {
   const node = props.selected;
 
@@ -30,12 +34,28 @@ export default function NodeInspector(props: {
   const type = String((node.data as any)?.type ?? node.type ?? "");
   const data = (node.data as any) ?? {};
   const config = data.config ?? {};
+  const isWorkflowNode = type.toLowerCase().includes("workflow");
+  const savedWorkflowOptions = props.savedWorkflows ?? [];
+  const selectedWorkflowId = String((config as any)?.workflowId ?? "");
   const template: NodeTemplate | undefined = NODE_BASE.find((t) => t.type === type);
 
   const agentConfig = {
     model: config.model ?? "gpt-4o-mini",
     memory: config.memory ?? "conversation-buffer",
     tools: Array.isArray(config.tools) ? config.tools : [],
+  };
+
+  const handleSelectSavedWorkflow = (workflowId: string) => {
+    const match = savedWorkflowOptions.find((w) => w.id === workflowId);
+    props.onUpdate({
+      data: {
+        ...data,
+        config: { ...config, workflowId, workflowName: match?.name },
+      },
+    });
+    if (match && props.onInsertWorkflow) {
+      props.onInsertWorkflow(match.workflow, { id: match.id, name: match.name });
+    }
   };
 
   function updateConfig(patch: Record<string, unknown>) {
@@ -100,6 +120,14 @@ export default function NodeInspector(props: {
                 </a>
               ) : null}
             </div>
+          ) : null}
+
+          {isWorkflowNode ? (
+            <WorkflowLibraryPicker
+              savedWorkflows={savedWorkflowOptions}
+              selectedId={selectedWorkflowId}
+              onSelect={handleSelectSavedWorkflow}
+            />
           ) : null}
 
           {type === "ai-agent" ? (
@@ -247,6 +275,35 @@ function MemoryEditor(props: { node: Node; onUpdate: (patch: Partial<Node>) => v
         <option value="vector-store">Vector store</option>
         <option value="none">Stateless</option>
       </select>
+    </div>
+  );
+}
+
+function WorkflowLibraryPicker(props: { savedWorkflows: SavedWorkflow[]; selectedId: string; onSelect: (id: string) => void }) {
+  const hasSaved = props.savedWorkflows.length > 0;
+  return (
+    <div className="col" style={{ padding: 10, borderRadius: 12, border: "1px solid var(--border)", background: "rgba(255,255,255,.04)" }}>
+      <div style={{ fontWeight: 650 }}>Saved Workflows</div>
+      {hasSaved ? (
+        <>
+          <label className="small muted">Choose workflow</label>
+          <select
+            className="select"
+            value={props.selectedId}
+            onChange={(e) => props.onSelect(e.target.value)}
+          >
+            <option value="">Select a saved workflow</option>
+            {props.savedWorkflows.map((wf) => (
+              <option key={wf.id} value={wf.id}>
+                {wf.name}
+              </option>
+            ))}
+          </select>
+          <div className="small muted">Selecting inserts a copy onto the canvas.</div>
+        </>
+      ) : (
+        <div className="small muted">Save a workflow to enable re-use here.</div>
+      )}
     </div>
   );
 }

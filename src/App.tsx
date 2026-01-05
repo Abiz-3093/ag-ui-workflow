@@ -106,50 +106,6 @@ function defaultConfigForType(t: PaletteNodeType) {
   return { ...defaults };
 }
 
-function computeExecutionOrder(wf: WorkflowState): string[] {
-  const adj: Record<string, string[]> = {};
-  const indeg: Record<string, number> = {};
-
-  wf.nodes.forEach((n) => {
-    adj[n.id] = [];
-    indeg[n.id] = 0;
-  });
-
-  wf.edges.forEach((e) => {
-    if (adj[e.source]) {
-      adj[e.source].push(e.target);
-    }
-    if (indeg[e.target] !== undefined) {
-      indeg[e.target] += 1;
-    }
-  });
-
-  const queue: string[] = Object.keys(indeg).filter((k) => indeg[k] === 0);
-  const order: string[] = [];
-
-  while (queue.length) {
-    const id = queue.shift()!;
-    order.push(id);
-    for (const nei of adj[id] ?? []) {
-      indeg[nei] -= 1;
-      if (indeg[nei] === 0) queue.push(nei);
-    }
-  }
-
-  // if cycle, append remaining
-  if (order.length < wf.nodes.length) {
-    wf.nodes.forEach((n) => {
-      if (!order.includes(n.id)) order.push(n.id);
-    });
-  }
-
-  return order;
-}
-
-function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
 export default function App() {
   const [wf, setWf] = useState<WorkflowState>(DEFAULT_WORKFLOW);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -174,7 +130,6 @@ export default function App() {
   const [importError, setImportError] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [runHighlights, setRunHighlights] = useState<Record<string, NodeRunStatus>>({});
-  const [isSimRunning, setIsSimRunning] = useState(false);
   const [clipboard, setClipboard] = useState<WorkflowState | null>(null);
   const [showEntryChoice, setShowEntryChoice] = useState(true);
 
@@ -346,14 +301,36 @@ export default function App() {
     }
   }, []);
 
+  const addSavedWorkflow = useCallback(
+    (name?: string) => {
+      const trimmedName = (name ?? "").trim();
+      const entry = {
+        id: nextId("proj"),
+        name: trimmedName || `Workflow ${projects.length + 1}`,
+        workflow: wf,
+        savedAt: Date.now(),
+      };
+      const next = [entry, ...projects];
+      persistProjects(next);
+      return entry;
+    },
+    [persistProjects, projects, wf]
+  );
+
   const saveCurrentProject = useCallback(() => {
-    const name = newProjectName.trim() || `Workflow ${projects.length + 1}`;
-    const entry = { id: nextId("proj"), name, workflow: wf, savedAt: Date.now() };
-    const next = [entry, ...projects];
-    persistProjects(next);
+    addSavedWorkflow(newProjectName);
     setNewProjectName("");
     setView("projects");
-  }, [newProjectName, projects, wf, persistProjects]);
+  }, [addSavedWorkflow, newProjectName]);
+
+  const quickSaveWorkflow = useCallback(() => {
+    const suggestedName = newProjectName.trim() || `Workflow ${projects.length + 1}`;
+    const name = window.prompt("Save workflow as", suggestedName);
+    if (name === null) return;
+    const entry = addSavedWorkflow(name);
+    setNewProjectName("");
+    appendLog(`Saved workflow "${entry.name}".`);
+  }, [addSavedWorkflow, appendLog, newProjectName, projects.length]);
 
   const loadProject = useCallback(
     (id: string) => {
@@ -531,6 +508,51 @@ export default function App() {
     setTimeout(() => pasteSelection(), 0);
   }, [copySelection, pasteSelection]);
 
+  const insertWorkflowIntoCanvas = useCallback(
+    (workflow: WorkflowState, meta?: { id: string; name: string }) => {
+      setWf((prev) => {
+        const existingIds = new Set(prev.nodes.map((n) => n.id));
+        const idMap: Record<string, string> = {};
+        const maxX = prev.nodes.length ? Math.max(...prev.nodes.map((n) => n.position.x)) : 0;
+        const maxY = prev.nodes.length ? Math.max(...prev.nodes.map((n) => n.position.y)) : 0;
+        const offsetX = maxX ? maxX + 220 : 120;
+        const offsetY = maxY ? maxY + 80 : 160;
+
+        const clonedNodes = workflow.nodes.map((n) => {
+          let newId = n.id;
+          while (existingIds.has(newId)) {
+            newId = nextId();
+          }
+          existingIds.add(newId);
+          idMap[n.id] = newId;
+          return {
+            ...n,
+            id: newId,
+            position: {
+              x: (n.position?.x ?? 0) + offsetX,
+              y: (n.position?.y ?? 0) + offsetY,
+            },
+            selected: false,
+          };
+        });
+
+        const clonedEdges = workflow.edges.map((e) => ({
+          ...e,
+          id: nextId("e"),
+          source: idMap[e.source] ?? e.source,
+          target: idMap[e.target] ?? e.target,
+        }));
+
+        return {
+          nodes: [...prev.nodes.map((n) => ({ ...n, selected: false })), ...clonedNodes],
+          edges: [...prev.edges, ...clonedEdges],
+        };
+      });
+      appendLog(meta?.name ? `Inserted saved workflow "${meta.name}".` : "Inserted saved workflow.");
+    },
+    [appendLog]
+  );
+
   const handleSelectNode = useCallback((n: Node | null, openInspector?: boolean) => {
     const id = n?.id ?? null;
     setSelectedNodeId(id);
@@ -613,25 +635,6 @@ export default function App() {
   const handleRunStart = useCallback(() => setRunStatusForPath("running"), [setRunStatusForPath]);
   const handleRunComplete = useCallback(() => setRunStatusForPath("success", 1400), [setRunStatusForPath]);
   const handleRunError = useCallback(() => setRunStatusForPath("error", 1800), [setRunStatusForPath]);
-
-  const runWorkflow = useCallback(async () => {
-    if (isSimRunning) return;
-    setIsSimRunning(true);
-    setRunHighlights({});
-    appendLog("Run started...");
-
-    const order = computeExecutionOrder(wf);
-    for (const id of order) {
-      setRunHighlights((prev) => ({ ...prev, [id]: "running" }));
-      await sleep(140);
-      setRunHighlights((prev) => ({ ...prev, [id]: "success" }));
-      await sleep(120);
-    }
-
-    await sleep(360);
-    setIsSimRunning(false);
-    appendLog("Run finished.");
-  }, [appendLog, isSimRunning, wf]);
 
   const chatResizeState = useRef<{ startY: number; startHeight: number } | null>(null);
   const onChatResizeMove = useCallback((e: MouseEvent) => {
@@ -778,8 +781,7 @@ export default function App() {
                   setPendingAttach({ kind, connectFrom: { nodeId: sourceId, handleId } });
                 }}
                 onViewJson={() => setShowJson(true)}
-                onRunWorkflow={runWorkflow}
-                isRunningWorkflow={isSimRunning}
+                onSaveWorkflow={quickSaveWorkflow}
                 onDeploy={() => {
                   try {
                     const blob = new Blob([JSON.stringify(wf, null, 2)], { type: "application/json" });
@@ -923,6 +925,8 @@ export default function App() {
               onUpdate={updateSelected}
               onUpdateNode={updateNodeById}
               onClose={closeInspector}
+              savedWorkflows={projects}
+              onInsertWorkflow={insertWorkflowIntoCanvas}
             />
           </div>
         </div>
