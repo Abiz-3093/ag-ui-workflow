@@ -79,7 +79,15 @@ export default function WorkflowCanvas(props: {
   onViewJson?: () => void;
   onDeploy?: () => void;
   runHighlights?: Record<string, NodeRunStatus>;
+  onRunWorkflow?: () => void;
+  isRunningWorkflow?: boolean;
+  onSelectionChange?: (nodes: Node[]) => void;
 }) {
+  const stateRef = React.useRef<WorkflowState>(props.state);
+  React.useEffect(() => {
+    stateRef.current = props.state;
+  }, [props.state]);
+
   const runHighlightsRef = React.useRef<Record<string, NodeRunStatus>>({});
   React.useEffect(() => {
     runHighlightsRef.current = props.runHighlights ?? {};
@@ -123,14 +131,15 @@ export default function WorkflowCanvas(props: {
   );
 
   const proOptions = useMemo(() => ({ hideAttribution: true }), []);
+  const snapGrid = useMemo(() => [16, 16] as [number, number], []);
 
   const handleDeleteEdge = useCallback(
     (id: string) =>
       props.onChange({
-        nodes: props.state.nodes,
-        edges: props.state.edges.filter((e) => e.id !== id),
+        nodes: stateRef.current.nodes,
+        edges: stateRef.current.edges.filter((e) => e.id !== id),
       }),
-    [props]
+    [props.onChange]
   );
 
   const nodesWithStatus = useMemo(
@@ -174,6 +183,14 @@ export default function WorkflowCanvas(props: {
     [handleRemove, handleAdd]
   );
 
+  const defaultEdgeOptions = useMemo(
+    () => ({
+      reconnectable: true as const,
+      updatable: true as const,
+    }),
+    []
+  );
+
   const edgeTypes = useMemo(
     () => ({
       deletable: (p: EdgeProps) => <DeletableEdge {...p} onDelete={handleDeleteEdge} />,
@@ -194,6 +211,17 @@ export default function WorkflowCanvas(props: {
               View JSON
             </button>
           ) : null}
+          {props.onRunWorkflow ? (
+            <button
+              className="btn btnPrimary btnSmall"
+              onClick={props.onRunWorkflow}
+              title="Run workflow"
+              disabled={props.isRunningWorkflow}
+              style={props.isRunningWorkflow ? { opacity: 0.6, cursor: "not-allowed" } : undefined}
+            >
+              {props.isRunningWorkflow ? "Running…" : "Run"}
+            </button>
+          ) : null}
           {props.onDeploy ? (
             <button className="btn btnPrimary btnSmall" onClick={props.onDeploy} title="Download workflow JSON">
               Deploy
@@ -209,14 +237,22 @@ export default function WorkflowCanvas(props: {
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
+          selectionOnDrag
+          panOnDrag
+          snapToGrid
+          snapGrid={snapGrid}
           onSelectionChange={({ nodes: selectedNodes }) =>
-            props.onSelectNode(selectedNodes && selectedNodes.length > 0 ? selectedNodes[0] : null)
+            {
+              props.onSelectionChange?.(selectedNodes);
+              props.onSelectNode(selectedNodes && selectedNodes.length > 0 ? selectedNodes[0] : null);
+            }
           }
           onNodeDoubleClick={(_, n) => props.onSelectNode(n, true)}
           onPaneClick={() => props.onSelectNode(null, false)}
           proOptions={proOptions}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
+          defaultEdgeOptions={defaultEdgeOptions}
         >
           <Background />
           <MiniMap />

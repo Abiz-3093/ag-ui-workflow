@@ -106,6 +106,50 @@ function defaultConfigForType(t: PaletteNodeType) {
   return { ...defaults };
 }
 
+function computeExecutionOrder(wf: WorkflowState): string[] {
+  const adj: Record<string, string[]> = {};
+  const indeg: Record<string, number> = {};
+
+  wf.nodes.forEach((n) => {
+    adj[n.id] = [];
+    indeg[n.id] = 0;
+  });
+
+  wf.edges.forEach((e) => {
+    if (adj[e.source]) {
+      adj[e.source].push(e.target);
+    }
+    if (indeg[e.target] !== undefined) {
+      indeg[e.target] += 1;
+    }
+  });
+
+  const queue: string[] = Object.keys(indeg).filter((k) => indeg[k] === 0);
+  const order: string[] = [];
+
+  while (queue.length) {
+    const id = queue.shift()!;
+    order.push(id);
+    for (const nei of adj[id] ?? []) {
+      indeg[nei] -= 1;
+      if (indeg[nei] === 0) queue.push(nei);
+    }
+  }
+
+  // if cycle, append remaining
+  if (order.length < wf.nodes.length) {
+    wf.nodes.forEach((n) => {
+      if (!order.includes(n.id)) order.push(n.id);
+    });
+  }
+
+  return order;
+}
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 export default function App() {
   const [wf, setWf] = useState<WorkflowState>(DEFAULT_WORKFLOW);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -130,6 +174,13 @@ export default function App() {
   const [importError, setImportError] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [runHighlights, setRunHighlights] = useState<Record<string, NodeRunStatus>>({});
+  const [isSimRunning, setIsSimRunning] = useState(false);
+  const [clipboard, setClipboard] = useState<WorkflowState | null>(null);
+  const [showEntryChoice, setShowEntryChoice] = useState(true);
+
+  const appendLog = useCallback((line: string) => {
+    setLogs((prev) => [...prev.slice(-99), line]);
+  }, []);
 
   const selectedNode = useMemo<Node | null>(() => {
     if (!selectedNodeId) return null;
@@ -402,6 +453,19 @@ export default function App() {
     setRunHighlights({});
   }, []);
 
+  const startFromScratch = useCallback(() => {
+    reset();
+    setView("workflow");
+    setShowPalette(false);
+    setShowEntryChoice(false);
+  }, [reset]);
+
+  const openExistingProjects = useCallback(() => {
+    setView("projects");
+    setShowPalette(false);
+    setShowEntryChoice(false);
+  }, []);
+
   const deleteNode = useCallback((id: string) => {
     setWf((prev) => ({
       nodes: prev.nodes.filter((n) => n.id !== id),
@@ -415,6 +479,58 @@ export default function App() {
     deleteNode(selectedNodeId);
   }, [deleteNode, selectedNodeId]);
 
+  const copySelection = useCallback(() => {
+    const selectedNodes = wf.nodes.filter((n) => n.selected);
+    if (!selectedNodes.length) return;
+    const selectedIds = new Set(selectedNodes.map((n) => n.id));
+    const selectedEdges = wf.edges.filter((e) => selectedIds.has(e.source) && selectedIds.has(e.target));
+    setClipboard({
+      nodes: selectedNodes,
+      edges: selectedEdges,
+    });
+    appendLog(`Copied ${selectedNodes.length} node(s).`);
+  }, [wf.nodes, wf.edges, appendLog]);
+
+  const pasteSelection = useCallback(() => {
+    if (!clipboard || clipboard.nodes.length === 0) return;
+    const idMap: Record<string, string> = {};
+    const newNodes = clipboard.nodes.map((n) => {
+      const newId = nextId();
+      idMap[n.id] = newId;
+      return {
+        ...n,
+        id: newId,
+        position: { x: n.position.x + 40, y: n.position.y + 40 },
+        selected: true,
+      };
+    });
+    const newEdges = clipboard.edges
+      .map((e) =>
+        idMap[e.source] && idMap[e.target]
+          ? {
+              ...e,
+              id: nextId("e"),
+              source: idMap[e.source],
+              target: idMap[e.target],
+            }
+          : null
+      )
+      .filter(Boolean) as typeof wf.edges;
+
+    setWf((prev) => ({
+      nodes: [...prev.nodes.map((n) => ({ ...n, selected: false })), ...newNodes],
+      edges: [...prev.edges, ...newEdges],
+    }));
+    setSelectedNodeId(newNodes[0]?.id ?? null);
+    appendLog(`Pasted ${newNodes.length} node(s).`);
+  }, [clipboard, appendLog]);
+
+  const duplicateSelection = useCallback(() => {
+    copySelection();
+    // slight delay to ensure clipboard set
+    setTimeout(() => pasteSelection(), 0);
+  }, [copySelection, pasteSelection]);
+
   const handleSelectNode = useCallback((n: Node | null, openInspector?: boolean) => {
     const id = n?.id ?? null;
     setSelectedNodeId(id);
@@ -427,15 +543,38 @@ export default function App() {
 
   React.useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Delete" || e.key === "Backspace") {
+      const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase();
+      const isTyping = tag === "input" || tag === "textarea";
+      if ((e.key === "Delete" || e.key === "Backspace") && !isTyping) {
         const tag = (e.target as HTMLElement | null)?.tagName?.toLowerCase();
         if (tag === "input" || tag === "textarea") return;
         deleteSelected();
       }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "c") {
+        if (isTyping) return;
+        e.preventDefault();
+        copySelection();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "v") {
+        if (isTyping) return;
+        e.preventDefault();
+        pasteSelection();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "d") {
+        if (isTyping) return;
+        e.preventDefault();
+        duplicateSelection();
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
+        if (isTyping) return;
+        e.preventDefault();
+        const fitBtn = document.querySelector(".react-flow__controls-fitview") as HTMLButtonElement | null;
+        fitBtn?.click();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [deleteSelected]);
+  }, [deleteSelected, copySelection, pasteSelection, duplicateSelection]);
 
   const updateNodeById = useCallback((id: string, patch: Partial<Node>) => {
     setWf((prev) => ({
@@ -471,13 +610,28 @@ export default function App() {
     }));
   }, []);
 
-  const appendLog = useCallback((line: string) => {
-    setLogs((prev) => [...prev.slice(-99), line]);
-  }, []);
-
   const handleRunStart = useCallback(() => setRunStatusForPath("running"), [setRunStatusForPath]);
   const handleRunComplete = useCallback(() => setRunStatusForPath("success", 1400), [setRunStatusForPath]);
   const handleRunError = useCallback(() => setRunStatusForPath("error", 1800), [setRunStatusForPath]);
+
+  const runWorkflow = useCallback(async () => {
+    if (isSimRunning) return;
+    setIsSimRunning(true);
+    setRunHighlights({});
+    appendLog("Run started...");
+
+    const order = computeExecutionOrder(wf);
+    for (const id of order) {
+      setRunHighlights((prev) => ({ ...prev, [id]: "running" }));
+      await sleep(140);
+      setRunHighlights((prev) => ({ ...prev, [id]: "success" }));
+      await sleep(120);
+    }
+
+    await sleep(360);
+    setIsSimRunning(false);
+    appendLog("Run finished.");
+  }, [appendLog, isSimRunning, wf]);
 
   const chatResizeState = useRef<{ startY: number; startHeight: number } | null>(null);
   const onChatResizeMove = useCallback((e: MouseEvent) => {
@@ -602,6 +756,20 @@ export default function App() {
                 state={wf}
                 onChange={setWf}
                 onSelectNode={handleSelectNode}
+                onSelectionChange={(selectedNodes) => {
+                  setWf((prev) => ({
+                    ...prev,
+                    nodes: prev.nodes.map((node) => ({
+                      ...node,
+                      selected: !!selectedNodes.find((s) => s.id === node.id),
+                    })),
+                  }));
+                  if (selectedNodes.length > 0) {
+                    setSelectedNodeId(selectedNodes[0].id);
+                  } else {
+                    setSelectedNodeId(null);
+                  }
+                }}
                 onRemoveNode={deleteNode}
                 onAddNode={addNode}
                 onStartAttach={({ kind, sourceId, handleId }) => {
@@ -610,6 +778,8 @@ export default function App() {
                   setPendingAttach({ kind, connectFrom: { nodeId: sourceId, handleId } });
                 }}
                 onViewJson={() => setShowJson(true)}
+                onRunWorkflow={runWorkflow}
+                isRunningWorkflow={isSimRunning}
                 onDeploy={() => {
                   try {
                     const blob = new Blob([JSON.stringify(wf, null, 2)], { type: "application/json" });
@@ -710,6 +880,29 @@ export default function App() {
           </div>
         )}
       </div>
+
+      {showEntryChoice ? (
+        <div className="jsonModal">
+          <div
+            className="jsonModalCard"
+            style={{ maxWidth: 420 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="col" style={{ gap: 12 }}>
+              <div style={{ fontWeight: 650, fontSize: 18 }}>How do you want to start?</div>
+              <div className="small muted">
+                Start fresh with a blank canvas or jump into an existing project.
+              </div>
+              <button className="btn btnPrimary" onClick={startFromScratch}>
+                Start from scratch
+              </button>
+              <button className="btn" onClick={openExistingProjects}>
+                Open existing project
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {showInspector && selectedNode ? (
         <div className="jsonModal" onClick={closeInspector}>
